@@ -1,0 +1,14 @@
+{application, telemetry,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  lager,
+                  inets
+                 ]},
+  {mod, { telemetry_app, []}},
+  {env, []}
+ ]}.
