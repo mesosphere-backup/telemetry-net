@@ -12,7 +12,7 @@
 
 %% API
 -export([start_link/0,
-  submit/3,
+  submit/4,
   reap/0
   ]).
 
@@ -24,14 +24,9 @@
   terminate/2,
   code_change/3]).
 
+-include("telemetry.hrl").
 
 -define(SERVER, ?MODULE).
-
--record(state, {
-          time_to_histos = orddict:new(),
-          time_to_counters = orddict:new(),
-          dirty_times = sets:new()
-         }).
 
 
 %%%===================================================================
@@ -42,9 +37,9 @@
 %% @doc
 %% @end
 %%--------------------------------------------------------------------
--spec(submit(Name :: binary(), Type :: term(), Value :: term()) -> ok | {error, atom()}).
-submit(Name, Type, Value) ->
-  gen_server:cast(?SERVER, {submit, Name, Type, Value}).
+-spec(submit(Name :: binary(), Time :: integer(), Type :: term(), Value :: term()) -> ok | {error, atom()}).
+submit(Name, Time, Type, Value) ->
+  gen_server:cast(?SERVER, {submit, Name, Time, Type, Value}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -81,10 +76,10 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(init(term()) ->
-  {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
+  {ok, State :: #metrics{}} | {ok, State :: #metrics{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
-  {ok, #state{}}.
+  {ok, #metrics{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -94,14 +89,14 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
-  State :: #state{}) ->
-  {reply, Reply :: term(), NewState :: #state{}} |
-  {reply, Reply :: term(), NewState :: #state{}, timeout() | hibernate} |
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
-  {stop, Reason :: term(), NewState :: #state{}}).
-handle_call(reap, _From, #state{time_to_histos = TimeToHistos,
+  State :: #metrics{}) ->
+  {reply, Reply :: term(), NewState :: #metrics{}} |
+  {reply, Reply :: term(), NewState :: #metrics{}, timeout() | hibernate} |
+  {noreply, NewState :: #metrics{}} |
+  {noreply, NewState :: #metrics{}, timeout() | hibernate} |
+  {stop, Reason :: term(), Reply :: term(), NewState :: #metrics{}} |
+  {stop, Reason :: term(), NewState :: #metrics{}}).
+handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
                                 time_to_counters = TimeToCounters,
                                 dirty_times = DirtyTimes}) ->
 
@@ -109,23 +104,36 @@ handle_call(reap, _From, #state{time_to_histos = TimeToHistos,
   RetHistos = orddict:filter(fun ({Time, _Name}, _V) ->
                                  sets:is_element(Time, DirtyTimes)
                              end, TimeToHistos),
+
+	RetHistos2 = orddict:map(fun ({Time, Name}, [HistoRef]) ->
+                               digest(Name, Time, HistoRef)
+                           end, RetHistos),
+
   RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
                                    sets:is_element(Time, DirtyTimes)
                                end, TimeToCounters),
-  RetState = #state{time_to_histos = RetHistos,
+
+  RetState = #metrics{time_to_histos = RetHistos2,
                     time_to_counters = RetCounters,
                     dirty_times = DirtyTimes},
 
   Now = os:system_time(seconds),
-  CutoffTime = Now - (telemetry_config:interval_seconds() * telemetry_config:max_intervals()),
+  CutoffTime = Now - (telemetry_config:interval_seconds() *
+                      telemetry_config:max_intervals()),
 
-  TimeToHistos2 = orddict:filter(fun ({Time, _Name}, _V) ->
-                                     Time =< CutoffTime
+  TimeToHistos2 = orddict:filter(fun ({Time, _Name}, [HistoRef]) ->
+                                     case Time =< CutoffTime of
+                                       true ->
+                                         true;
+                                       false ->
+                                         hdr_histogram:close(HistoRef),
+                                         false
+                                     end
                                  end, TimeToHistos),
   TimeToCounters2 = orddict:filter(fun ({Time, _Name}, _V) ->
                                        Time =< CutoffTime
                                    end, TimeToCounters),
-  {reply, RetState, #state{time_to_histos = TimeToHistos2,
+  {reply, RetState, #metrics{time_to_histos = TimeToHistos2,
                            time_to_counters = TimeToCounters2}};
 
 handle_call(_Request, _From, State) ->
@@ -139,50 +147,44 @@ handle_call(_Request, _From, State) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(handle_cast(Request :: term(), State :: #state{}) ->
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #state{}}).
-handle_cast({submit, Time, Name, histogram, Value},
-            State = #state{time_to_histos = TimeToHistos,
+-spec(handle_cast(Request :: term(), State :: #metrics{}) ->
+  {noreply, NewState :: #metrics{}} |
+  {noreply, NewState :: #metrics{}, timeout() | hibernate} |
+  {stop, Reason :: term(), NewState :: #metrics{}}).
+handle_cast({submit, Name, Time, histogram, Value},
+            State = #metrics{time_to_histos = TimeToHistos,
                            dirty_times = DirtyTimes}) ->
 
-  NormalizedTime = Time - (Time rem telemetry_config:interval_seconds()),
+  NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
   TimeToHistos2 = case orddict:is_key({NormalizedTime, Name}, TimeToHistos) of
                     true ->
                       TimeToHistos;
                     false ->
-                      orddict:append({NormalizedTime, Name},
-                                     hdr_histogram:open(1000000,3),
-                                     TimeToHistos)
+                      {ok, HistoRef} = hdr_histogram:open(1000000, 3),
+                      orddict:append({NormalizedTime, Name}, HistoRef, TimeToHistos)
                   end,
 
-  TimeToHistos3 = orddict:update({NormalizedTime, Name},
-                                 fun (HistoRef) ->
-                                     hdr_histogram:record(HistoRef, Value)
-                                 end,
-                                 TimeToHistos2),
+  orddict:update({NormalizedTime, Name},
+                 fun ([HistoRef]) ->
+                     hdr_histogram:record(HistoRef, Value)
+                 end, TimeToHistos2),
   
   DirtyTimes2 = sets:add_element(NormalizedTime, DirtyTimes),
 
-  {noreply, State#state{time_to_histos = TimeToHistos3,
+  {noreply, State#metrics{time_to_histos = TimeToHistos2,
                         dirty_times = DirtyTimes2}};
 
-handle_cast({submit, Time, Name, counter, Value},
-            State = #state{time_to_counters = TimeToCounters,
+handle_cast({submit, Name, Time, counter, Value},
+            State = #metrics{time_to_counters = TimeToCounters,
                            dirty_times = DirtyTimes}) ->
 
-  NormalizedTime = Time - (Time rem telemetry_config:interval_seconds()),
-  TimeToCounters2 = case orddict:is_key({NormalizedTime, Name}, TimeToCounters) of
-                      true -> TimeToCounters;
-                      false -> orddict:append({NormalizedTime, Name}, 0, TimeToCounters)
-                    end,
+  NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
 
-  TimeToCounters3 = orddict:update_counter({NormalizedTime, Name}, Value, TimeToCounters2),
+  TimeToCounters2 = orddict:update_counter({NormalizedTime, Name}, 1, TimeToCounters),
 
   DirtyTimes2 = sets:add_element(NormalizedTime, DirtyTimes),
 
-  {noreply, State#state{time_to_counters = TimeToCounters3,
+  {noreply, State#metrics{time_to_counters = TimeToCounters2,
                         dirty_times = DirtyTimes2}}.
 
 %%--------------------------------------------------------------------
@@ -195,10 +197,10 @@ handle_cast({submit, Time, Name, counter, Value},
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
--spec(handle_info(Info :: timeout() | term(), State :: #state{}) ->
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #state{}}).
+-spec(handle_info(Info :: timeout() | term(), State :: #metrics{}) ->
+  {noreply, NewState :: #metrics{}} |
+  {noreply, NewState :: #metrics{}, timeout() | hibernate} |
+  {stop, Reason :: term(), NewState :: #metrics{}}).
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -214,8 +216,8 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
-  State :: #state{}) -> term()).
-terminate(_Reason, _State = #state{}) ->
+  State :: #metrics{}) -> term()).
+terminate(_Reason, _State = #metrics{}) ->
   ok.
 
 %%--------------------------------------------------------------------
@@ -226,9 +228,28 @@ terminate(_Reason, _State = #state{}) ->
 %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%--------------------------------------------------------------------
--spec(code_change(OldVsn :: term() | {down, term()}, State :: #state{},
+-spec(code_change(OldVsn :: term() | {down, term()}, State :: #metrics{},
   Extra :: term()) ->
-  {ok, NewState :: #state{}} | {error, Reason :: term()}).
+  {ok, NewState :: #metrics{}} | {error, Reason :: term()}).
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
+
+digest(Name, Time, HistoRef) ->
+  #{
+    name => Name,
+    time => Time,
+		min => hdr_histogram:min(HistoRef),
+		mean => hdr_histogram:mean(HistoRef),
+		median => hdr_histogram:median(HistoRef),
+		max => hdr_histogram:max(HistoRef),
+		stddev => hdr_histogram:stddev(HistoRef),
+		p75 => hdr_histogram:percentile(HistoRef, 75.0),
+		p90 => hdr_histogram:percentile(HistoRef, 90.0),
+		p95 => hdr_histogram:percentile(HistoRef, 95.0),
+		p99 => hdr_histogram:percentile(HistoRef, 99.0),
+		p999 => hdr_histogram:percentile(HistoRef, 99.9),
+		p9999 => hdr_histogram:percentile(HistoRef, 99.99),
+		p99999 => hdr_histogram:percentile(HistoRef, 99.999),
+		total_count => hdr_histogram:get_total_count(HistoRef)
+  }.

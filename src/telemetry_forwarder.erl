@@ -123,8 +123,9 @@ handle_cast({enqueue, Time, Aggregate}, State) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_info(attempt_push, State) ->
+  Metrics = telemetry_store:reap(),
   io:format("pushing metrics: ~p~n",[
-  gen_server:multi_call(['minuteman@127.0.0.1'], telemetry_receiver, yo)
+  gen_server:multi_call(['minuteman@127.0.0.1'], telemetry_receiver, Metrics)
                                     ]),
   erlang:send_after(splay_ms(), self(), attempt_push),
   {noreply, State};

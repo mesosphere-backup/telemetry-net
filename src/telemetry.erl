@@ -10,10 +10,23 @@
 -author("Tyler Neely").
 
 %% API
--export([start/0, stop/0]).
+-export([start/0,
+         stop/0,
+         counter/2,
+         histogram/2
+        ]).
 
 start() ->
   application:ensure_all_started(telemetry).
 
 stop() ->
   application:stop(telemetry).
+
+counter(Name, Value) ->
+  Now = os:system_time(seconds),
+  telemetry_store:submit(Name, Now, counter, Value).
+
+histogram(Name, Value) ->
+  Now = os:system_time(seconds),
+  telemetry_store:submit(Name, Now, histogram, Value).
+

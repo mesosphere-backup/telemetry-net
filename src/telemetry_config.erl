@@ -12,20 +12,15 @@
 %% API
 -export([interval_seconds/0,
   max_intervals/0,
-  aggregation_port/0,
   forwarder_destinations/0]).
 
 
 interval_seconds() ->
-  application:get_env(telemetry, interval_seconds, 60).
+  application:get_env(telemetry, interval_seconds, 6).
 
 
 max_intervals() ->
   application:get_env(telemetry, max_intervals, 60).
-
-
-aggregation_port() ->
-  application:get_env(telemetry, aggregation_port, 61666).
 
 
 forwarder_destinations() ->

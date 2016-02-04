@@ -88,8 +88,8 @@ init([]) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_call(_Request, _From, State) ->
-  io:format("[call] receiving metrics in the receiver!!!!~n"),
+handle_call(Request, _From, State) ->
+  io:format("[call] receiving metrics in the receiver: ~p~n", [Request]),
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
