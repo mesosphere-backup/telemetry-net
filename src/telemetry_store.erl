@@ -160,6 +160,8 @@ handle_cast({submit, Name, Time, histogram, Value},
                     true ->
                       TimeToHistos;
                     false ->
+                      %% This opens up a histogram with a max value of 1M,
+                      %% which records up to 3 significant figures of a value.
                       {ok, HistoRef} = hdr_histogram:open(1000000, 3),
                       orddict:append({NormalizedTime, Name}, HistoRef, TimeToHistos)
                   end,
@@ -180,7 +182,7 @@ handle_cast({submit, Name, Time, counter, Value},
 
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
 
-  TimeToCounters2 = orddict:update_counter({NormalizedTime, Name}, 1, TimeToCounters),
+  TimeToCounters2 = orddict:update_counter({NormalizedTime, Name}, Value, TimeToCounters),
 
   DirtyTimes2 = sets:add_element(NormalizedTime, DirtyTimes),
 
