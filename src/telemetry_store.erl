@@ -13,7 +13,8 @@
 %% API
 -export([start_link/0,
   submit/4,
-  reap/0
+  reap/0,
+  merge_binary/1
   ]).
 
 %% gen_server callbacks
@@ -35,6 +36,7 @@
 
 %%--------------------------------------------------------------------
 %% @doc
+%% Submit a metric to the store for aggregation.
 %% @end
 %%--------------------------------------------------------------------
 -spec(submit(Name :: binary(), Time :: integer(), Type :: term(), Value :: term()) -> ok | {error, atom()}).
@@ -43,11 +45,23 @@ submit(Name, Time, Type, Value) ->
 
 %%--------------------------------------------------------------------
 %% @doc
+%% For all times which have had metrics submitted in the last interval,
+%% collect the counters and hdr_histogram binary exports.
 %% @end
 %%--------------------------------------------------------------------
 -spec(reap() -> {ok, term()} | {error, atom()}).
 reap() ->
   gen_server:call(?SERVER, reap).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Take counters and serialized hdr_histograms and merge them with our
+%% state.
+%% @end
+%%--------------------------------------------------------------------
+-spec(merge_binary(Metrics :: #binary_metrics{}) -> ok | {error, atom()}).
+merge_binary(Metrics) ->
+  gen_server:call(?SERVER, {merge_binary, Metrics}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -90,8 +104,8 @@ init([]) ->
 %%--------------------------------------------------------------------
 -spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
   State :: #metrics{}) ->
-  {reply, Reply :: term(), NewState :: #metrics{}} |
-  {reply, Reply :: term(), NewState :: #metrics{}, timeout() | hibernate} |
+  {reply, Reply :: #binary_metrics{}, NewState :: #metrics{}} |
+  {reply, Reply :: #binary_metrics{}, NewState :: #metrics{}, timeout() | hibernate} |
   {noreply, NewState :: #metrics{}} |
   {noreply, NewState :: #metrics{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #metrics{}} |
@@ -105,17 +119,17 @@ handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
                                  sets:is_element(Time, DirtyTimes)
                              end, TimeToHistos),
 
-	RetHistos2 = orddict:map(fun ({Time, Name}, [HistoRef]) ->
-                               digest(Name, Time, HistoRef)
+	RetHistos2 = orddict:map(fun ({_Time, _Name}, [HistoRef]) ->
+                               hdr_histogram:to_binary(HistoRef)
                            end, RetHistos),
 
   RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
                                    sets:is_element(Time, DirtyTimes)
                                end, TimeToCounters),
 
-  RetState = #metrics{time_to_histos = RetHistos2,
-                    time_to_counters = RetCounters,
-                    dirty_times = DirtyTimes},
+  RetState = #binary_metrics{time_to_binary_histos = RetHistos2,
+                             time_to_counters = RetCounters,
+                             dirty_times = DirtyTimes},
 
   Now = os:system_time(seconds),
   CutoffTime = Now - (telemetry_config:interval_seconds() *
@@ -135,6 +149,21 @@ handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
                                    end, TimeToCounters),
   {reply, RetState, #metrics{time_to_histos = TimeToHistos2,
                            time_to_counters = TimeToCounters2}};
+
+handle_call({merge_binary, #metrics{time_to_histos = TimeToBinaryHistosIn,
+                             time_to_counters = TimeToCountersIn,
+                             dirty_times = DirtyTimesIn}},
+            _From,
+            _State = #metrics{time_to_histos = TimeToHistos,
+                              time_to_counters = TimeToCounters,
+                              dirty_times = DirtyTimes}) ->
+  MergedDirtyTimes = sets:union(DirtyTimesIn, DirtyTimes),
+  MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
+  MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
+  MergedState = #metrics{time_to_histos = MergedHistos,
+                         time_to_counters = MergedCounters,
+                         dirty_times = MergedDirtyTimes},
+  {reply, ok, MergedState};
 
 handle_call(_Request, _From, State) ->
   io:format("[call] unhandled in store~n"),
@@ -170,7 +199,7 @@ handle_cast({submit, Name, Time, histogram, Value},
                  fun ([HistoRef]) ->
                      hdr_histogram:record(HistoRef, Value)
                  end, TimeToHistos2),
-  
+
   DirtyTimes2 = sets:add_element(NormalizedTime, DirtyTimes),
 
   {noreply, State#metrics{time_to_histos = TimeToHistos2,
@@ -236,22 +265,26 @@ terminate(_Reason, _State = #metrics{}) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Takes an orddict of {Time, Name} -> hdr_histogram exported binaries,
+%% and merges it with an orddict of {Time, Name} -> hdr_histogram
+%% local instances.
+%% @end
+%%--------------------------------------------------------------------
+merge_histos(TimeToBinaryHistos, TimeToHistos) ->
+  MergeFunc = fun (_K, HistoBinary, HistoRef) ->
+                  {ok, HistoRefToMerge} = hdr_histogram:from_binary(HistoBinary),
+                  hdr_histogram:add(HistoRef, HistoRefToMerge),
+                  hdr_histogram:close(HistoRefToMerge),
+                  HistoRef
+              end,
+  orddict:merge(MergeFunc, TimeToBinaryHistos, TimeToHistos).
 
-digest(Name, Time, HistoRef) ->
-  #{
-    name => Name,
-    time => Time,
-		min => hdr_histogram:min(HistoRef),
-		mean => hdr_histogram:mean(HistoRef),
-		median => hdr_histogram:median(HistoRef),
-		max => hdr_histogram:max(HistoRef),
-		stddev => hdr_histogram:stddev(HistoRef),
-		p75 => hdr_histogram:percentile(HistoRef, 75.0),
-		p90 => hdr_histogram:percentile(HistoRef, 90.0),
-		p95 => hdr_histogram:percentile(HistoRef, 95.0),
-		p99 => hdr_histogram:percentile(HistoRef, 99.0),
-		p999 => hdr_histogram:percentile(HistoRef, 99.9),
-		p9999 => hdr_histogram:percentile(HistoRef, 99.99),
-		p99999 => hdr_histogram:percentile(HistoRef, 99.999),
-		total_count => hdr_histogram:get_total_count(HistoRef)
-  }.
+
+merge_counters(TimeToCounters1, TimeToCounters2) ->
+  MergeFunc = fun(_K, Counter1, Counter2) ->
+                  Counter1 + Counter2
+              end,
+  orddict:merge(MergeFunc, TimeToCounters1, TimeToCounters2).
