@@ -124,9 +124,10 @@ handle_cast({enqueue, Time, Aggregate}, State) ->
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_info(attempt_push, State) ->
   Metrics = telemetry_store:reap(),
-  io:format("pushing metrics: ~p~n",[
-  gen_server:multi_call(['minuteman@127.0.0.1'], telemetry_receiver, Metrics)
-                                    ]),
+  {GoodReps, BadReps} = gen_server:multi_call(['minuteman@127.0.0.1'],
+                                              telemetry_receiver,
+                                              {push_binary_metrics, Metrics}),
+  io:format("pushing metrics: ~p~n",[{GoodReps, BadReps}]),
   erlang:send_after(splay_ms(), self(), attempt_push),
   {noreply, State};
 handle_info(_Info, State) ->

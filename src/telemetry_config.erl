@@ -12,7 +12,8 @@
 %% API
 -export([interval_seconds/0,
   max_intervals/0,
-  forwarder_destinations/0]).
+  forwarder_destinations/0,
+  is_aggregator/0]).
 
 
 interval_seconds() ->
@@ -25,3 +26,15 @@ max_intervals() ->
 
 forwarder_destinations() ->
   application:get_env(telemetry, forwarder_destinations, "localhost").
+
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Determines whether we should retain aggregate metrics after passing
+%% them along, or only incremental measurements.  This should be set to
+%% false for anything that is not the final stage of an aggregation
+%% pipeline, otherwise deplicate metrics will be submitted.
+%% @end
+%%--------------------------------------------------------------------
+is_aggregator() ->
+  application:get_env(telemetry, is_aggregator, false).

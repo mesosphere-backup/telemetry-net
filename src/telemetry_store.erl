@@ -112,11 +112,12 @@ init([]) ->
   {stop, Reason :: term(), NewState :: #metrics{}}).
 handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
                                 time_to_counters = TimeToCounters,
-                                dirty_times = DirtyTimes}) ->
+                                dirty_histo_times = DirtyHistoTimes,
+                                dirty_counter_times = DirtyCounterTimes}) ->
 
   io:format("[call] reap in store~n"),
   RetHistos = orddict:filter(fun ({Time, _Name}, _V) ->
-                                 sets:is_element(Time, DirtyTimes)
+                                 sets:is_element(Time, DirtyHistoTimes)
                              end, TimeToHistos),
 
 	RetHistos2 = orddict:map(fun ({_Time, _Name}, [HistoRef]) ->
@@ -124,12 +125,16 @@ handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
                            end, RetHistos),
 
   RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
-                                   sets:is_element(Time, DirtyTimes)
+                                   sets:is_element(Time, DirtyCounterTimes)
                                end, TimeToCounters),
 
-  RetState = #binary_metrics{time_to_binary_histos = RetHistos2,
-                             time_to_counters = RetCounters,
-                             dirty_times = DirtyTimes},
+  IsAggregator = telemetry_config:is_aggregator(),
+
+  ReapedState = #binary_metrics{time_to_binary_histos = RetHistos2,
+                                time_to_counters = RetCounters,
+                                dirty_histo_times = DirtyHistoTimes,
+                                dirty_counter_times = DirtyCounterTimes,
+                                is_aggregate = IsAggregator},
 
   Now = os:system_time(seconds),
   CutoffTime = Now - (telemetry_config:interval_seconds() *
@@ -147,26 +152,37 @@ handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
   TimeToCounters2 = orddict:filter(fun ({Time, _Name}, _V) ->
                                        Time =< CutoffTime
                                    end, TimeToCounters),
-  {reply, RetState, #metrics{time_to_histos = TimeToHistos2,
-                           time_to_counters = TimeToCounters2}};
 
-handle_call({merge_binary, #metrics{time_to_histos = TimeToBinaryHistosIn,
+  %% Only nodes in aggregator mode should retain non-partial metrics.
+  RetState = case IsAggregator of
+               true -> #metrics{time_to_histos = TimeToHistos2,
+                                time_to_counters = TimeToCounters2};
+               false -> #metrics{}
+             end,
+
+  {reply, ReapedState, RetState};
+
+handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
                              time_to_counters = TimeToCountersIn,
-                             dirty_times = DirtyTimesIn}},
+                             dirty_histo_times = DirtyHistoTimesIn,
+                             dirty_counter_times = DirtyCounterTimesIn}},
             _From,
             _State = #metrics{time_to_histos = TimeToHistos,
                               time_to_counters = TimeToCounters,
-                              dirty_times = DirtyTimes}) ->
-  MergedDirtyTimes = sets:union(DirtyTimesIn, DirtyTimes),
+                              dirty_histo_times = DirtyHistoTimes,
+                              dirty_counter_times = DirtyCounterTimes}) ->
+  MergedDirtyHistoTimes = sets:union(DirtyHistoTimesIn, DirtyHistoTimes),
+  MergedDirtyCounterTimes = sets:union(DirtyCounterTimesIn, DirtyCounterTimes),
   MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
   MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
   MergedState = #metrics{time_to_histos = MergedHistos,
                          time_to_counters = MergedCounters,
-                         dirty_times = MergedDirtyTimes},
+                         dirty_histo_times = MergedDirtyHistoTimes,
+                         dirty_counter_times = MergedDirtyCounterTimes},
   {reply, ok, MergedState};
 
-handle_call(_Request, _From, State) ->
-  io:format("[call] unhandled in store~n"),
+handle_call(Request, _From, State) ->
+  io:format("[call] unhandled in store ~p~n", [Request]),
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
@@ -182,7 +198,7 @@ handle_call(_Request, _From, State) ->
   {stop, Reason :: term(), NewState :: #metrics{}}).
 handle_cast({submit, Name, Time, histogram, Value},
             State = #metrics{time_to_histos = TimeToHistos,
-                           dirty_times = DirtyTimes}) ->
+                             dirty_histo_times = DirtyHistoTimes}) ->
 
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
   TimeToHistos2 = case orddict:is_key({NormalizedTime, Name}, TimeToHistos) of
@@ -200,23 +216,23 @@ handle_cast({submit, Name, Time, histogram, Value},
                      hdr_histogram:record(HistoRef, Value)
                  end, TimeToHistos2),
 
-  DirtyTimes2 = sets:add_element(NormalizedTime, DirtyTimes),
+  DirtyHistoTimes2 = sets:add_element(NormalizedTime, DirtyHistoTimes),
 
   {noreply, State#metrics{time_to_histos = TimeToHistos2,
-                        dirty_times = DirtyTimes2}};
+                          dirty_histo_times = DirtyHistoTimes2}};
 
 handle_cast({submit, Name, Time, counter, Value},
             State = #metrics{time_to_counters = TimeToCounters,
-                           dirty_times = DirtyTimes}) ->
+                             dirty_counter_times = DirtyCounterTimes}) ->
 
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
 
   TimeToCounters2 = orddict:update_counter({NormalizedTime, Name}, Value, TimeToCounters),
 
-  DirtyTimes2 = sets:add_element(NormalizedTime, DirtyTimes),
+  DirtyCounterTimes2 = sets:add_element(NormalizedTime, DirtyCounterTimes),
 
   {noreply, State#metrics{time_to_counters = TimeToCounters2,
-                        dirty_times = DirtyTimes2}}.
+                          dirty_counter_times = DirtyCounterTimes2}}.
 
 %%--------------------------------------------------------------------
 %% @private
