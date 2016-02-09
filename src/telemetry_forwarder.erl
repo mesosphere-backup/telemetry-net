@@ -11,9 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
-  enqueue/2
-  ]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -28,20 +26,9 @@
 
 -record(state, {}).
 
--type aggregate() :: term().
-
 %%%===================================================================
 %%% API
 %%%===================================================================
-
-%%--------------------------------------------------------------------
-%% @doc
-%% Add metrics to the persistent outbox to be sent to aggregators.
-%% @end
-%%--------------------------------------------------------------------
--spec(enqueue(Time :: integer(), Aggregate :: aggregate()) -> ok | {error, atom()}).
-enqueue(Time, Aggregate) ->
-  gen_server:cast(?SERVER, {enqueue, Time, Aggregate}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -105,7 +92,7 @@ handle_call(_Request, _From, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_cast({enqueue, Time, Aggregate}, State) ->
+handle_cast(_Req, State) ->
   {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -124,11 +111,25 @@ handle_cast({enqueue, Time, Aggregate}, State) ->
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_info(attempt_push, State) ->
   Metrics = telemetry_store:reap(),
-  {GoodReps, BadReps} = gen_server:multi_call(['minuteman@127.0.0.1'],
+
+  Endpoints = telemetry_config:forwarder_destinations(),
+  UseAllEndpointsPerRecord = telemetry_config:forward_to_all_resolved_hosts(),
+
+  Destinations = lists:flatmap(fun (Name) ->
+                                   Records = inet_res:lookup(Name, in, a),
+                                   take_first_or_all(UseAllEndpointsPerRecord, Records)
+                               end, Endpoints),
+
+  DestinationAtoms = lists:map(fun fmt_ip/1, Destinations),
+
+  {GoodReps, BadReps} = gen_server:multi_call(DestinationAtoms,
                                               telemetry_receiver,
                                               {push_binary_metrics, Metrics}),
+
   io:format("pushing metrics: ~p~n",[{GoodReps, BadReps}]),
+
   erlang:send_after(splay_ms(), self(), attempt_push),
+
   {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
@@ -171,6 +172,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% once per minute while submitting metrics.
 %% @end
 %%--------------------------------------------------------------------
+-spec(splay_ms() -> integer()).
 splay_ms() ->
   MsPerMinute = telemetry_config:interval_seconds() * 1000,
   NextMinute = -1 * erlang:monotonic_time(milli_seconds) rem MsPerMinute,
@@ -179,3 +181,28 @@ splay_ms() ->
   Splay = random:uniform(TenSecondsInMs),
 
   NextMinute + Splay.
+
+-spec(fmt_ip({integer(), integer(), integer(), integer()}) -> atom()).
+fmt_ip({A, B, C, D}) ->
+  NodeList = io_lib:format("minuteman@~p.~p.~p.~p",
+                           [A,B,C,D]),
+  FlatStr = lists:flatten(NodeList),
+  list_to_atom(FlatStr).
+
+
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% If the first argument is true, return the full second argument.
+%% Otherwise, return at most one element from the second argument.
+%% @end
+%%--------------------------------------------------------------------
+-spec(take_first_or_all(boolean(), list(term())) -> list(term())).
+take_first_or_all(true, R) ->
+  R;
+take_first_or_all(false, []) ->
+  [];
+take_first_or_all(false, [A | _]) ->
+  [A].
+

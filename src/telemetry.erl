@@ -49,3 +49,4 @@ hdr_to_map(Name, Time, HistoRef) ->
     p99999 => hdr_histogram:percentile(HistoRef, 99.999),
     total_count => hdr_histogram:get_total_count(HistoRef)
   }.
+

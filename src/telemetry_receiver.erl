@@ -11,9 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
-  submit/3
-  ]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -32,14 +30,6 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-
-%%--------------------------------------------------------------------
-%% @doc
-%% @end
-%%--------------------------------------------------------------------
--spec(submit(Name :: binary(), Type :: term(), Value :: term()) -> ok | {error, atom()}).
-submit(Name, Type, Value) ->
-  gen_server:cast(?SERVER, {submit, Name, Type, Value}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -104,7 +94,7 @@ handle_call({push_binary_metrics, Metrics}, _From, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_cast({submit, Name, Type, Value}, State) ->
+handle_cast(_Req, State) ->
   {noreply, State}.
 
 %%--------------------------------------------------------------------

@@ -26,13 +26,36 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+
+
+%% ===================================================================
+%% Helper functions
+%% ===================================================================
+maybe_add_forwarder(Children) ->
+  case telemetry_config:forward_metrics() of
+    true ->
+      [?CHILD(telemetry_forwarder, worker) | Children];
+    false ->
+      Children
+  end.
+
+
+maybe_add_receiver(Children) ->
+  case telemetry_config:receive_metrics() of
+    true ->
+      [?CHILD(telemetry_receiver, worker) | Children];
+    false ->
+      Children
+  end.
+
+
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [
-                                 ?CHILD(telemetry_store, worker),
-                                 ?CHILD(telemetry_forwarder, worker),
-                                 ?CHILD(telemetry_receiver, worker)
-                                ]}}.
+  Children = maybe_add_forwarder([]),
+  Children2 = maybe_add_receiver(Children),
+  %% always make sure telemetry_store is first in this list
+  Children3 = [?CHILD(telemetry_store, worker) | Children2],
+  {ok, {{one_for_one, 5, 10}, Children3}}.

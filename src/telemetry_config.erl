@@ -13,7 +13,10 @@
 -export([interval_seconds/0,
   max_intervals/0,
   forwarder_destinations/0,
-  is_aggregator/0]).
+  forward_to_all_resolved_hosts/0,
+  is_aggregator/0,
+  forward_metrics/0,
+  receive_metrics/0]).
 
 
 interval_seconds() ->
@@ -25,7 +28,18 @@ max_intervals() ->
 
 
 forwarder_destinations() ->
-  application:get_env(telemetry, forwarder_destinations, "localhost").
+  application:get_env(telemetry, forwarder_destinations, ["localhost"]).
+
+
+%%--------------------------------------------------------------------
+%% @doc
+%% When resolving each destination in forwarder_destinations, send to
+%% ALL resolved hosts or just a single one.  This is useful eg. for
+%% sending metrics to all mesos masters.
+%% @end
+%%--------------------------------------------------------------------
+forward_to_all_resolved_hosts() ->
+  application:get_env(telemetry, forward_to_all_resolved_hosts, true).
 
 
 %%--------------------------------------------------------------------
@@ -38,3 +52,12 @@ forwarder_destinations() ->
 %%--------------------------------------------------------------------
 is_aggregator() ->
   application:get_env(telemetry, is_aggregator, false).
+
+
+forward_metrics() ->
+  application:get_env(telemetry, forward_metrics, true).
+
+
+receive_metrics() ->
+  application:get_env(telemetry, receive_metrics, true).
+
