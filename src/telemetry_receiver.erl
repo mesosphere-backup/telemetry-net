@@ -79,7 +79,6 @@ init([]) ->
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_call({push_binary_metrics, Metrics}, _From, State) ->
-  io:format("[call] receiving metrics in the receiver: ~p~n", [Metrics]),
   Res = telemetry_store:merge_binary(Metrics),
   {reply, Res, State}.
 

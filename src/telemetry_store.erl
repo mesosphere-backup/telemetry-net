@@ -13,6 +13,7 @@
 %% API
 -export([start_link/0,
   submit/4,
+  snapshot/0,
   reap/0,
   merge_binary/1
   ]).
@@ -42,6 +43,15 @@
 -spec(submit(Name :: binary(), Time :: integer(), Type :: term(), Value :: term()) -> ok | {error, atom()}).
 submit(Name, Time, Type, Value) ->
   gen_server:cast(?SERVER, {submit, Name, Time, Type, Value}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get a snapshot of current metrics.
+%% @end
+%%--------------------------------------------------------------------
+-spec(snapshot() -> #binary_metrics{}).
+snapshot() ->
+  gen_server:call(?SERVER, snapshot).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -110,33 +120,15 @@ init([]) ->
   {noreply, NewState :: #metrics{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #metrics{}} |
   {stop, Reason :: term(), NewState :: #metrics{}}).
-handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
-                                time_to_counters = TimeToCounters,
-                                dirty_histo_times = DirtyHistoTimes,
-                                dirty_counter_times = DirtyCounterTimes}) ->
+handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
+                                             time_to_counters = TimeToCounters}) ->
 
-  io:format("[call] reap in store~n"),
-  RetHistos = orddict:filter(fun ({Time, _Name}, _V) ->
-                                 sets:is_element(Time, DirtyHistoTimes)
-                             end, TimeToHistos),
+  %% Create a snapshot of current metrics.
+  ReapedState = extract_binary_metrics(Metrics),
 
-	RetHistos2 = orddict:map(fun ({_Time, _Name}, [HistoRef]) ->
-                               hdr_histogram:to_binary(HistoRef)
-                           end, RetHistos),
-
-  RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
-                                   sets:is_element(Time, DirtyCounterTimes)
-                               end, TimeToCounters),
-
-  IsAggregator = telemetry_config:is_aggregator(),
-
-  ReapedState = #binary_metrics{time_to_binary_histos = RetHistos2,
-                                time_to_counters = RetCounters,
-                                dirty_histo_times = DirtyHistoTimes,
-                                dirty_counter_times = DirtyCounterTimes,
-                                is_aggregate = IsAggregator},
-
+  %% Prune metrics that we should shed.
   Now = os:system_time(seconds),
+
   CutoffTime = Now - (telemetry_config:interval_seconds() *
                       telemetry_config:max_intervals()),
 
@@ -149,11 +141,13 @@ handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
                                          false
                                      end
                                  end, TimeToHistos),
+
   TimeToCounters2 = orddict:filter(fun ({Time, _Name}, _V) ->
                                        Time =< CutoffTime
                                    end, TimeToCounters),
 
   %% Only nodes in aggregator mode should retain non-partial metrics.
+  IsAggregator = telemetry_config:is_aggregator(),
   RetState = case IsAggregator of
                true -> #metrics{time_to_histos = TimeToHistos2,
                                 time_to_counters = TimeToCounters2};
@@ -162,10 +156,14 @@ handle_call(reap, _From, #metrics{time_to_histos = TimeToHistos,
 
   {reply, ReapedState, RetState};
 
+handle_call(snapshot, _From, Metrics) ->
+  ReapedState = extract_binary_metrics(Metrics),
+  {reply, ReapedState, Metrics};
+
 handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
-                             time_to_counters = TimeToCountersIn,
-                             dirty_histo_times = DirtyHistoTimesIn,
-                             dirty_counter_times = DirtyCounterTimesIn}},
+                                           time_to_counters = TimeToCountersIn,
+                                           dirty_histo_times = DirtyHistoTimesIn,
+                                           dirty_counter_times = DirtyCounterTimesIn}},
             _From,
             _State = #metrics{time_to_histos = TimeToHistos,
                               time_to_counters = TimeToCounters,
@@ -181,8 +179,7 @@ handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
                          dirty_counter_times = MergedDirtyCounterTimes},
   {reply, ok, MergedState};
 
-handle_call(Request, _From, State) ->
-  io:format("[call] unhandled in store ~p~n", [Request]),
+handle_call(_Request, _From, State) ->
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
@@ -304,3 +301,31 @@ merge_counters(TimeToCounters1, TimeToCounters2) ->
                   Counter1 + Counter2
               end,
   orddict:merge(MergeFunc, TimeToCounters1, TimeToCounters2).
+
+
+extract_binary_metrics(#metrics{time_to_histos = TimeToHistos,
+                                time_to_counters = TimeToCounters,
+                                dirty_histo_times = DirtyHistoTimes,
+                                dirty_counter_times = DirtyCounterTimes}) ->
+
+  RetHistos = orddict:filter(fun ({Time, _Name}, _V) ->
+                                 sets:is_element(Time, DirtyHistoTimes)
+                             end, TimeToHistos),
+
+  RetHistos2 = orddict:map(fun ({_Time, _Name}, [HistoRef]) ->
+                               hdr_histogram:to_binary(HistoRef)
+                           end, RetHistos),
+
+  RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
+                                   sets:is_element(Time, DirtyCounterTimes)
+                               end, TimeToCounters),
+
+  IsAggregator = telemetry_config:is_aggregator(),
+
+  #binary_metrics{time_to_binary_histos = RetHistos2,
+                  time_to_counters = RetCounters,
+                  dirty_histo_times = DirtyHistoTimes,
+                  dirty_counter_times = DirtyCounterTimes,
+                  is_aggregate = IsAggregator}.
+
+

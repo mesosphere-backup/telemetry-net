@@ -122,11 +122,11 @@ handle_info(attempt_push, State) ->
 
   DestinationAtoms = lists:map(fun fmt_ip/1, Destinations),
 
-  {GoodReps, BadReps} = gen_server:multi_call(DestinationAtoms,
+  %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
+  %% new ones at each interval.
+  {_GoodReps, _BadReps} = gen_server:multi_call(DestinationAtoms,
                                               telemetry_receiver,
                                               {push_binary_metrics, Metrics}),
-
-  io:format("pushing metrics: ~p~n",[{GoodReps, BadReps}]),
 
   erlang:send_after(splay_ms(), self(), attempt_push),
 
