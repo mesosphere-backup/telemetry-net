@@ -80,6 +80,12 @@ init([]) ->
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_call({push_binary_metrics, Metrics}, _From, State) ->
   Res = telemetry_store:merge_binary(Metrics),
+  Now = erlang:monotonic_time(),
+  io:format("got: ~p~n", [telemetry:binary_metrics_to_summary(Metrics)]),
+  Now2 = erlang:monotonic_time(),
+  telemetry:histogram("stuff", Now2 - Now),
+  telemetry:counter("stuff", Now2 - Now),
+
   {reply, Res, State}.
 
 %%--------------------------------------------------------------------

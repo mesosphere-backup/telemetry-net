@@ -14,8 +14,11 @@
          stop/0,
          counter/2,
          histogram/2,
-         hdr_to_map/3
+         hdr_to_map/3,
+         binary_metrics_to_summary/1
         ]).
+
+-include("telemetry.hrl").
 
 start() ->
   application:ensure_all_started(telemetry).
@@ -50,3 +53,42 @@ hdr_to_map(Name, Time, HistoRef) ->
     total_count => hdr_histogram:get_total_count(HistoRef)
   }.
 
+
+%% Converts orddicts that are {Time, Metric} -> Value to Metric -> Time -> Value
+-spec(binary_metrics_to_summary(#binary_metrics{}) -> maps:map(atom(), histo_summary() | counter_summary())).
+binary_metrics_to_summary(#binary_metrics{time_to_binary_histos = TimeToBinaryHistos,
+                                          time_to_counters = TimeToCounters}) ->
+  HistoExtractFun = fun binary_histo_to_summary/3,
+  CounterExtractFun = fun (_Name, _Time, Value) -> Value end,
+
+  Histograms = invert_time_name_to_value_orddict(TimeToBinaryHistos, HistoExtractFun),
+  Counters = invert_time_name_to_value_orddict(TimeToCounters, CounterExtractFun),
+
+  #{
+    counters => Counters,
+    histograms => Histograms
+  }.
+
+
+-spec(invert_time_name_to_value_orddict(time_to_binary_histos() | time_to_counters(), function()) -> 
+                                        histo_summary() | counter_summary()).
+invert_time_name_to_value_orddict(TimeNameToValueOrddict, ExtractFun) ->
+  Orddict = orddict:fold(fun({Time, Name}, ValueIn, AccIn) ->
+                             ValueOut = ExtractFun(Name, Time, ValueIn),
+                             orddict:append(Name, {Time, ValueOut}, AccIn)
+                         end, orddict:new(), TimeNameToValueOrddict),
+
+  DictList = orddict:to_list(Orddict),
+
+  lists:foldl(fun({Name, TimeSummaryList}, AccIn) ->
+                  TimeSummaryMap = maps:from_list(TimeSummaryList),
+                  maps:put(Name, TimeSummaryMap, AccIn)
+              end, #{}, DictList).
+
+
+-spec(binary_histo_to_summary(string(), integer(), time_to_binary_histos()) -> histo_summary()).
+binary_histo_to_summary(Name, Time, BinaryHisto) ->
+  {ok, HistoRef} = hdr_histogram:from_binary(BinaryHisto),
+  Summary = hdr_to_map(Name, Time, HistoRef),
+  hdr_histogram:close(HistoRef),
+  Summary.

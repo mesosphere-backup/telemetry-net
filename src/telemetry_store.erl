@@ -124,7 +124,7 @@ handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
                                              time_to_counters = TimeToCounters}) ->
 
   %% Create a snapshot of current metrics.
-  ReapedState = extract_binary_metrics(Metrics),
+  ReapedState = export_metrics(Metrics),
 
   %% Prune metrics that we should shed.
   Now = os:system_time(seconds),
@@ -157,7 +157,7 @@ handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
   {reply, ReapedState, RetState};
 
 handle_call(snapshot, _From, Metrics) ->
-  ReapedState = extract_binary_metrics(Metrics),
+  ReapedState = export_metrics(Metrics),
   {reply, ReapedState, Metrics};
 
 handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
@@ -287,13 +287,24 @@ code_change(_OldVsn, State, _Extra) ->
 %% @end
 %%--------------------------------------------------------------------
 merge_histos(TimeToBinaryHistos, TimeToHistos) ->
-  MergeFunc = fun (_K, HistoBinary, HistoRef) ->
+  %% Make sure the non-binary orddict has all keys present, or
+  %% the binary will take precedence.
+  InitializedOrddict = orddict:fold(fun (K, _V, AccIn) ->
+                                        case orddict:is_key(K, AccIn) of
+                                          false ->
+                                            {ok, HistoRef} = hdr_histogram:open(1000000, 3),
+                                            orddict:append(K, HistoRef, AccIn);
+                                          true ->
+                                            AccIn
+                                        end
+                                    end, TimeToHistos, TimeToBinaryHistos),
+  MergeFunc = fun (_K, HistoBinary, [HistoRef]) ->
                   {ok, HistoRefToMerge} = hdr_histogram:from_binary(HistoBinary),
                   hdr_histogram:add(HistoRef, HistoRefToMerge),
                   hdr_histogram:close(HistoRefToMerge),
-                  HistoRef
+                  [HistoRef]
               end,
-  orddict:merge(MergeFunc, TimeToBinaryHistos, TimeToHistos).
+  orddict:merge(MergeFunc, TimeToBinaryHistos, InitializedOrddict).
 
 
 merge_counters(TimeToCounters1, TimeToCounters2) ->
@@ -303,10 +314,10 @@ merge_counters(TimeToCounters1, TimeToCounters2) ->
   orddict:merge(MergeFunc, TimeToCounters1, TimeToCounters2).
 
 
-extract_binary_metrics(#metrics{time_to_histos = TimeToHistos,
-                                time_to_counters = TimeToCounters,
-                                dirty_histo_times = DirtyHistoTimes,
-                                dirty_counter_times = DirtyCounterTimes}) ->
+export_metrics(#metrics{time_to_histos = TimeToHistos,
+                        time_to_counters = TimeToCounters,
+                        dirty_histo_times = DirtyHistoTimes,
+                        dirty_counter_times = DirtyCounterTimes}) ->
 
   RetHistos = orddict:filter(fun ({Time, _Name}, _V) ->
                                  sets:is_element(Time, DirtyHistoTimes)
