@@ -20,7 +20,7 @@
 
 
 interval_seconds() ->
-  application:get_env(telemetry, interval_seconds, 6).
+  application:get_env(telemetry, interval_seconds, 1).
 
 
 max_intervals() ->
