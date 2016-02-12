@@ -177,8 +177,9 @@ splay_ms() ->
   MsPerMinute = telemetry_config:interval_seconds() * 1000,
   NextMinute = -1 * erlang:monotonic_time(milli_seconds) rem MsPerMinute,
 
-  TenSecondsInMs = 10 * 1000,
-  Splay = random:uniform(TenSecondsInMs),
+  SplayMS = telemetry_config:splay_seconds() * 1000,
+  FlooredSplayMS = max(1, SplayMS),
+  Splay = random:uniform(FlooredSplayMS),
 
   NextMinute + Splay.
 

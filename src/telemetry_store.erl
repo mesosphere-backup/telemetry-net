@@ -122,7 +122,6 @@ init([]) ->
   {stop, Reason :: term(), NewState :: #metrics{}}).
 handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
                                              time_to_counters = TimeToCounters}) ->
-  io:format("histos 4: ~p~n", [TimeToHistos]),
 
   %% Create a snapshot of current metrics.
   ReapedState = export_metrics(Metrics),
@@ -134,7 +133,7 @@ handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
                       telemetry_config:max_intervals()),
 
   TimeToHistos2 = orddict:filter(fun ({Time, _Name}, [HistoRef]) ->
-                                     case Time =< CutoffTime of
+                                     case Time >= CutoffTime of
                                        true ->
                                          true;
                                        false ->
@@ -144,12 +143,11 @@ handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
                                  end, TimeToHistos),
 
   TimeToCounters2 = orddict:filter(fun ({Time, _Name}, _V) ->
-                                       Time =< CutoffTime
+                                       Time >= CutoffTime
                                    end, TimeToCounters),
 
   %% Only nodes in aggregator mode should retain non-partial metrics.
   IsAggregator = telemetry_config:is_aggregator(),
-  io:format("histos 5: ~p~n", [TimeToHistos2]),
   RetState = case IsAggregator of
                true -> #metrics{time_to_histos = TimeToHistos2,
                                 time_to_counters = TimeToCounters2};
@@ -171,12 +169,10 @@ handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
                               time_to_counters = TimeToCounters,
                               dirty_histo_times = DirtyHistoTimes,
                               dirty_counter_times = DirtyCounterTimes}) ->
-  io:format("histos 2: ~p~n", [TimeToHistos]),
   MergedDirtyHistoTimes = sets:union(DirtyHistoTimesIn, DirtyHistoTimes),
   MergedDirtyCounterTimes = sets:union(DirtyCounterTimesIn, DirtyCounterTimes),
   MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
   MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
-  io:format("histos 3: ~p~n", [MergedHistos]),
   MergedState = #metrics{time_to_histos = MergedHistos,
                          time_to_counters = MergedCounters,
                          dirty_histo_times = MergedDirtyHistoTimes,
@@ -201,7 +197,6 @@ handle_cast({submit, Name, Time, histogram, Value},
             State = #metrics{time_to_histos = TimeToHistos,
                              dirty_histo_times = DirtyHistoTimes}) ->
 
-  io:format("histos 0: ~p~n", [lists:map(fun ({N, [HR]}) -> {N, hdr_histogram:get_total_count(HR)} end, TimeToHistos)]),
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
   TimeToHistos2 = case orddict:is_key({NormalizedTime, Name}, TimeToHistos) of
                     true ->
@@ -209,18 +204,17 @@ handle_cast({submit, Name, Time, histogram, Value},
                     false ->
                       %% This opens up a histogram with a max value of 1M,
                       %% which records up to 3 significant figures of a value.
-                      {ok, HistoRef} = hdr_histogram:open(round(1.0E10), 3),
+                      MaxVal = telemetry_config:max_histo_value(),
+                      {ok, HistoRef} = hdr_histogram:open(round(MaxVal), 3),
                       orddict:append({NormalizedTime, Name}, HistoRef, TimeToHistos)
                   end,
 
   orddict:update({NormalizedTime, Name},
                  fun ([HistoRef]) ->
-                     ok = hdr_histogram:record(HistoRef, Value),
-                     io:format("read back: ~p~n", [hdr_histogram:get_total_count(HistoRef)])
+                     ok = hdr_histogram:record(HistoRef, Value)
                  end, TimeToHistos2),
 
   DirtyHistoTimes2 = sets:add_element(NormalizedTime, DirtyHistoTimes),
-  io:format("histos 1: ~p~n", [lists:map(fun ({N, [HR]}) -> {N, hdr_histogram:get_total_count(HR)} end, TimeToHistos2)]),
 
   {noreply, State#metrics{time_to_histos = TimeToHistos2,
                           dirty_histo_times = DirtyHistoTimes2}};
@@ -306,7 +300,6 @@ merge_histos(TimeToBinaryHistos, TimeToHistos) ->
                                         end
                                     end, TimeToHistos, TimeToBinaryHistos),
   MergeFunc = fun (_K, HistoBinary, [HistoRef]) ->
-                  io:format("1: ~p 2: ~p~n", [HistoBinary, HistoRef]),
                   {ok, HistoRefToMerge} = hdr_histogram:from_binary(HistoBinary),
                   hdr_histogram:add(HistoRef, HistoRefToMerge),
                   hdr_histogram:close(HistoRefToMerge),
@@ -327,22 +320,18 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
                         dirty_histo_times = DirtyHistoTimes,
                         dirty_counter_times = DirtyCounterTimes}) ->
 
-  io:format("here1~n"),
   RetHistos = orddict:filter(fun ({Time, _Name}, _V) ->
                                  sets:is_element(Time, DirtyHistoTimes)
                              end, TimeToHistos),
 
-  io:format("here2~n"),
   RetHistos2 = orddict:map(fun ({_Time, _Name}, [HistoRef]) ->
                                hdr_histogram:to_binary(HistoRef)
                            end, RetHistos),
 
-  io:format("here3~n"),
   RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
                                    sets:is_element(Time, DirtyCounterTimes)
                                end, TimeToCounters),
 
-  io:format("here4~n"),
   IsAggregator = telemetry_config:is_aggregator(),
 
   #binary_metrics{time_to_binary_histos = RetHistos2,

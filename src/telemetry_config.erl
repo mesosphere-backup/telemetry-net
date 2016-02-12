@@ -12,23 +12,29 @@
 %% API
 -export([interval_seconds/0,
   max_intervals/0,
+  splay_seconds/0,
   forwarder_destinations/0,
   forward_to_all_resolved_hosts/0,
   is_aggregator/0,
+  max_histo_value/0,
   forward_metrics/0,
   receive_metrics/0]).
 
 
 interval_seconds() ->
-  application:get_env(telemetry, interval_seconds, 1).
+  application:get_env(telemetry, interval_seconds, 60).
 
 
 max_intervals() ->
   application:get_env(telemetry, max_intervals, 60).
 
 
+splay_seconds() ->
+  application:get_env(telemetry, splay_seconds, 10).
+
+
 forwarder_destinations() ->
-  application:get_env(telemetry, forwarder_destinations, ["localhost"]).
+  application:get_env(telemetry, forwarder_destinations, []).
 
 
 %%--------------------------------------------------------------------
@@ -60,4 +66,9 @@ forward_metrics() ->
 
 receive_metrics() ->
   application:get_env(telemetry, receive_metrics, true).
+
+
+max_histo_value() ->
+  application:get_env(telemetry, max_histo_value, 1.0E12).
+
 
