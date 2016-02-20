@@ -65,7 +65,7 @@ forward_metrics() ->
 
 
 receive_metrics() ->
-  application:get_env(telemetry, receive_metrics, true).
+  application:get_env(telemetry, receive_metrics, false).
 
 
 max_histo_value() ->
