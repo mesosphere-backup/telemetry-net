@@ -14,6 +14,8 @@
          stop/0,
          counter/2,
          histogram/2,
+         add_gauge_func/2,
+         remove_gauge_func/1,
          hdr_to_map/3,
          binary_metrics_to_summary/1
         ]).
@@ -33,6 +35,12 @@ counter(Name, Value) ->
 histogram(Name, Value) ->
   Now = os:system_time(seconds),
   telemetry_store:submit(Name, Now, histogram, Value).
+
+add_gauge_func(Name, Fun) ->
+  telemetry_store:add_gauge_func(Name, Fun).
+
+remove_gauge_func(Name) ->
+  telemetry_store:remove_gauge_func(Name).
 
 hdr_to_map(Name, Time, HistoRef) ->
   #{

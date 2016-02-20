@@ -15,7 +15,9 @@
   submit/4,
   snapshot/0,
   reap/0,
-  merge_binary/1
+  merge_binary/1,
+  add_gauge_func/2,
+  remove_gauge_func/1
   ]).
 
 %% gen_server callbacks
@@ -29,6 +31,11 @@
 -include("telemetry.hrl").
 
 -define(SERVER, ?MODULE).
+
+-record(store, {
+  metrics = #metrics{},
+  metric_funs = maps:new()
+  }).
 
 
 %%%===================================================================
@@ -75,6 +82,25 @@ merge_binary(Metrics) ->
 
 %%--------------------------------------------------------------------
 %% @doc
+%% Register a fun of zero arity that returns a numerical value to be
+%% called upon the creation of any metrics snapshot.
+%% @end
+%%--------------------------------------------------------------------
+-spec(add_gauge_func(string(), fun()) -> ok | {error, atom()}).
+add_gauge_func(Name, Fun) ->
+  gen_server:call(?SERVER, {add_gauge_func, Name, Fun}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Remove a metrics function previously registered using add_gauge_func.
+%% @end
+%%--------------------------------------------------------------------
+-spec(remove_gauge_func(string()) -> ok).
+remove_gauge_func(Name) ->
+  gen_server:call(?SERVER, {remove_gauge_func, Name}).
+
+%%--------------------------------------------------------------------
+%% @doc
 %% Starts the server
 %%
 %% @end
@@ -100,10 +126,10 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(init(term()) ->
-  {ok, State :: #metrics{}} | {ok, State :: #metrics{}, timeout() | hibernate} |
+  {ok, State :: #store{}} | {ok, State :: #store{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
-  {ok, #metrics{}}.
+  {ok, #store{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -113,18 +139,22 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
-  State :: #metrics{}) ->
-  {reply, Reply :: #binary_metrics{}, NewState :: #metrics{}} |
-  {reply, Reply :: #binary_metrics{}, NewState :: #metrics{}, timeout() | hibernate} |
-  {noreply, NewState :: #metrics{}} |
-  {noreply, NewState :: #metrics{}, timeout() | hibernate} |
-  {stop, Reason :: term(), Reply :: term(), NewState :: #metrics{}} |
-  {stop, Reason :: term(), NewState :: #metrics{}}).
-handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
-                                             time_to_counters = TimeToCounters}) ->
+  State :: #store{}) ->
+  {reply, Reply :: #binary_metrics{}, NewState :: #store{}} |
+  {reply, Reply :: #binary_metrics{}, NewState :: #store{}, timeout() | hibernate} |
+  {noreply, NewState :: #store{}} |
+  {noreply, NewState :: #store{}, timeout() | hibernate} |
+  {stop, Reason :: term(), Reply :: term(), NewState :: #store{}} |
+  {stop, Reason :: term(), NewState :: #store{}}).
+handle_call(reap, _From, #store{metrics = Metrics, metric_funs = MetricFuns}) ->
+  %% record function gauges
+  Metrics2 = record_gauge_funcs(Metrics, MetricFuns),
+
+  #metrics{time_to_histos = TimeToHistos,
+           time_to_counters = TimeToCounters} = Metrics2,
 
   %% Create a snapshot of current metrics.
-  ReapedState = export_metrics(Metrics),
+  ReapedState = export_metrics(Metrics2),
 
   %% Prune metrics that we should shed.
   Now = os:system_time(seconds),
@@ -148,38 +178,53 @@ handle_call(reap, _From, Metrics =  #metrics{time_to_histos = TimeToHistos,
 
   %% Only nodes in aggregator mode should retain non-partial metrics.
   IsAggregator = telemetry_config:is_aggregator(),
-  RetState = case IsAggregator of
-               true -> #metrics{time_to_histos = TimeToHistos2,
-                                time_to_counters = TimeToCounters2};
-               false -> #metrics{}
-             end,
+  RetMetrics = case IsAggregator of
+                 true -> #metrics{time_to_histos = TimeToHistos2,
+                                  time_to_counters = TimeToCounters2};
+                 false -> #metrics{}
+               end,
+
+  RetState = #store{metrics = RetMetrics, metric_funs = MetricFuns},
 
   {reply, ReapedState, RetState};
 
-handle_call(snapshot, _From, Metrics) ->
+handle_call(snapshot, _From, State = #store{metrics = Metrics}) ->
   ReapedState = export_metrics(Metrics),
-  {reply, ReapedState, Metrics};
+  {reply, ReapedState, State};
 
 handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
                                            time_to_counters = TimeToCountersIn,
                                            dirty_histo_times = DirtyHistoTimesIn,
                                            dirty_counter_times = DirtyCounterTimesIn}},
             _From,
-            _State = #metrics{time_to_histos = TimeToHistos,
-                              time_to_counters = TimeToCounters,
-                              dirty_histo_times = DirtyHistoTimes,
-                              dirty_counter_times = DirtyCounterTimes}) ->
+            _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
+  #metrics{time_to_histos = TimeToHistos,
+           time_to_counters = TimeToCounters,
+           dirty_histo_times = DirtyHistoTimes,
+           dirty_counter_times = DirtyCounterTimes} = Metrics,
   MergedDirtyHistoTimes = sets:union(DirtyHistoTimesIn, DirtyHistoTimes),
   MergedDirtyCounterTimes = sets:union(DirtyCounterTimesIn, DirtyCounterTimes),
   MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
   MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
-  MergedState = #metrics{time_to_histos = MergedHistos,
-                         time_to_counters = MergedCounters,
-                         dirty_histo_times = MergedDirtyHistoTimes,
-                         dirty_counter_times = MergedDirtyCounterTimes},
+  MergedMetrics = #metrics{time_to_histos = MergedHistos,
+                           time_to_counters = MergedCounters,
+                           dirty_histo_times = MergedDirtyHistoTimes,
+                           dirty_counter_times = MergedDirtyCounterTimes},
+  MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
   {reply, ok, MergedState};
 
-handle_call(_Request, _From, State) ->
+handle_call({add_gauge_func, Name, Fun}, _From, State = #store{metric_funs = MetricFuns}) ->
+  NewMetricFuns = maps:put(Name, Fun, MetricFuns),
+  NewState = State#store{metric_funs = NewMetricFuns},
+  {reply, ok, NewState};
+
+handle_call({remove_gauge_func, Name}, _From, State = #store{metric_funs = MetricFuns}) ->
+  NewMetricFuns = maps:remove(Name, MetricFuns),
+  NewState = State#store{metric_funs = NewMetricFuns},
+  {reply, ok, NewState};
+
+handle_call(Request, _From, State) ->
+  lager:warn("got unknown request in telemetry_store handle_call: ~p", [Request]),
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
@@ -189,14 +234,14 @@ handle_call(_Request, _From, State) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(handle_cast(Request :: term(), State :: #metrics{}) ->
-  {noreply, NewState :: #metrics{}} |
-  {noreply, NewState :: #metrics{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #metrics{}}).
+-spec(handle_cast(Request :: term(), State :: #store{}) ->
+  {noreply, NewState :: #store{}} |
+  {noreply, NewState :: #store{}, timeout() | hibernate} |
+  {stop, Reason :: term(), NewState :: #store{}}).
 handle_cast({submit, Name, Time, histogram, Value},
-            State = #metrics{time_to_histos = TimeToHistos,
-                             dirty_histo_times = DirtyHistoTimes}) ->
-
+            State = #store{metrics = Metrics}) ->
+  #metrics{time_to_histos = TimeToHistos,
+           dirty_histo_times = DirtyHistoTimes} = Metrics,
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
   TimeToHistos2 = case orddict:is_key({NormalizedTime, Name}, TimeToHistos) of
                     true ->
@@ -206,7 +251,7 @@ handle_cast({submit, Name, Time, histogram, Value},
                       %% which records up to 3 significant figures of a value.
                       MaxVal = telemetry_config:max_histo_value(),
                       {ok, HistoRef} = hdr_histogram:open(round(MaxVal), 3),
-                      orddict:append({NormalizedTime, Name}, HistoRef, TimeToHistos)
+                      orddict:store({NormalizedTime, Name}, HistoRef, TimeToHistos)
                   end,
 
   orddict:update({NormalizedTime, Name},
@@ -216,12 +261,17 @@ handle_cast({submit, Name, Time, histogram, Value},
 
   DirtyHistoTimes2 = sets:add_element(NormalizedTime, DirtyHistoTimes),
 
-  {noreply, State#metrics{time_to_histos = TimeToHistos2,
-                          dirty_histo_times = DirtyHistoTimes2}};
+  RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos2,
+                               dirty_histo_times = DirtyHistoTimes2},
+
+  RetState = State#store{metrics = RetMetrics},
+
+  {noreply, RetState};
 
 handle_cast({submit, Name, Time, counter, Value},
-            State = #metrics{time_to_counters = TimeToCounters,
-                             dirty_counter_times = DirtyCounterTimes}) ->
+            State = #store{metrics = Metrics}) ->
+  #metrics{time_to_counters = TimeToCounters,
+           dirty_counter_times = DirtyCounterTimes} = Metrics,
 
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
 
@@ -229,8 +279,12 @@ handle_cast({submit, Name, Time, counter, Value},
 
   DirtyCounterTimes2 = sets:add_element(NormalizedTime, DirtyCounterTimes),
 
-  {noreply, State#metrics{time_to_counters = TimeToCounters2,
-                          dirty_counter_times = DirtyCounterTimes2}}.
+  RetMetrics = Metrics#metrics{time_to_counters = TimeToCounters2,
+                               dirty_counter_times = DirtyCounterTimes2},
+
+  RetState = State#store{metrics = RetMetrics},
+
+  {noreply, RetState}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -294,7 +348,7 @@ merge_histos(TimeToBinaryHistos, TimeToHistos) ->
                                         case orddict:is_key(K, AccIn) of
                                           false ->
                                             {ok, HistoRef} = hdr_histogram:open(1000000, 3),
-                                            orddict:append(K, HistoRef, AccIn);
+                                            orddict:store(K, HistoRef, AccIn);
                                           true ->
                                             AccIn
                                         end
@@ -315,6 +369,23 @@ merge_counters(TimeToCounters1, TimeToCounters2) ->
   orddict:merge(MergeFunc, TimeToCounters1, TimeToCounters2).
 
 
+record_gauge_funcs(Metrics = #metrics{time_to_counters = TimeToCounters,
+                                      dirty_counter_times = DirtyCounterTimes},
+                   MetricFuns) ->
+  Now = os:system_time(seconds),
+  NormalizedTime = Now - (round(Now) rem telemetry_config:interval_seconds()),
+
+  RetCounters2 = maps:fold(fun (Name, Fun, AccIn) ->
+                               Value = Fun(),
+                               orddict:store({NormalizedTime, Name}, Value, AccIn)
+                           end, TimeToCounters, MetricFuns),
+  DirtyCounterTimes2 = sets:add_element(NormalizedTime, DirtyCounterTimes),
+
+  Metrics#metrics{time_to_counters = RetCounters2,
+                  dirty_counter_times = DirtyCounterTimes2}.
+
+
+-spec(export_metrics(#metrics{}) -> #binary_metrics{}).
 export_metrics(#metrics{time_to_histos = TimeToHistos,
                         time_to_counters = TimeToCounters,
                         dirty_histo_times = DirtyHistoTimes,
@@ -331,7 +402,6 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
   RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
                                    sets:is_element(Time, DirtyCounterTimes)
                                end, TimeToCounters),
-
   IsAggregator = telemetry_config:is_aggregator(),
 
   #binary_metrics{time_to_binary_histos = RetHistos2,
