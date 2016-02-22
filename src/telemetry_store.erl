@@ -162,7 +162,7 @@ handle_call(reap, _From, #store{metrics = Metrics, metric_funs = MetricFuns}) ->
   CutoffTime = Now - (telemetry_config:interval_seconds() *
                       telemetry_config:max_intervals()),
 
-  TimeToHistos2 = orddict:filter(fun ({Time, _Name}, [HistoRef]) ->
+  TimeToHistos2 = orddict:filter(fun ({Time, _Name}, HistoRef) ->
                                      case Time >= CutoffTime of
                                        true ->
                                          true;
@@ -183,9 +183,7 @@ handle_call(reap, _From, #store{metrics = Metrics, metric_funs = MetricFuns}) ->
                                   time_to_counters = TimeToCounters2};
                  false -> #metrics{}
                end,
-
   RetState = #store{metrics = RetMetrics, metric_funs = MetricFuns},
-
   {reply, ReapedState, RetState};
 
 handle_call(snapshot, _From, State = #store{metrics = Metrics}) ->
@@ -255,7 +253,7 @@ handle_cast({submit, Name, Time, histogram, Value},
                   end,
 
   orddict:update({NormalizedTime, Name},
-                 fun ([HistoRef]) ->
+                 fun (HistoRef) ->
                      ok = hdr_histogram:record(HistoRef, Value)
                  end, TimeToHistos2),
 
@@ -316,7 +314,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
   State :: #metrics{}) -> term()).
-terminate(_Reason, _State = #metrics{}) ->
+terminate(_Reason, _State = #store{}) ->
   ok.
 
 %%--------------------------------------------------------------------
@@ -353,11 +351,11 @@ merge_histos(TimeToBinaryHistos, TimeToHistos) ->
                                             AccIn
                                         end
                                     end, TimeToHistos, TimeToBinaryHistos),
-  MergeFunc = fun (_K, HistoBinary, [HistoRef]) ->
+  MergeFunc = fun (_K, HistoBinary, HistoRef) ->
                   {ok, HistoRefToMerge} = hdr_histogram:from_binary(HistoBinary),
                   hdr_histogram:add(HistoRef, HistoRefToMerge),
                   hdr_histogram:close(HistoRefToMerge),
-                  [HistoRef]
+                  HistoRef
               end,
   orddict:merge(MergeFunc, TimeToBinaryHistos, InitializedOrddict).
 
@@ -395,7 +393,7 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
                                  sets:is_element(Time, DirtyHistoTimes)
                              end, TimeToHistos),
 
-  RetHistos2 = orddict:map(fun ({_Time, _Name}, [HistoRef]) ->
+  RetHistos2 = orddict:map(fun ({_Time, _Name}, HistoRef) ->
                                hdr_histogram:to_binary(HistoRef)
                            end, RetHistos),
 

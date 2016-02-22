@@ -13,12 +13,20 @@
 -type histo_summary() :: maps:map(string(), maps:map(integer(), maps:map(atom(), term()))).
 -type counter_summary() :: maps:map(string(), maps:map(integer(), integer())).
 
+
+-record(name_tags, {
+  name :: string(),
+  tags :: maps:map()
+  }).
+
+
 -record(metrics, {
   time_to_histos = orddict:new(),
   time_to_counters = orddict:new(),
   dirty_histo_times = sets:new(),
   dirty_counter_times = sets:new()
   }).
+
 
 -record(binary_metrics, {
   time_to_binary_histos = orddict:new(),
