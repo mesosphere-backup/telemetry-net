@@ -121,7 +121,7 @@ invert_time_name_to_value_orddict(TimeNameToValueOrddict, ExtractFun) ->
   DictList = orddict:to_list(Orddict),
 
   lists:foldl(fun({Name, TimeSummary}, AccIn) ->
-                  TimeSummaryMap = maps:from_list([TimeSummary]),
+                  TimeSummaryMap = maps:from_list(TimeSummary),
                   maps:put(Name, TimeSummaryMap, AccIn)
               end, #{}, DictList).
 
