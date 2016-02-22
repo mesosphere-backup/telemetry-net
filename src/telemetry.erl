@@ -55,7 +55,7 @@ counter(Name, Tags, Value) ->
 histogram(Name, Value) ->
   Now = os:system_time(seconds),
   DefaultTags = default_tags(),
-  telemetry_store:submit(Name, % #name_tags{name = Name, tags = DefaultTags},
+  telemetry_store:submit(#name_tags{name = Name, tags = DefaultTags},
                          Now, histogram, Value).
 
 -spec(histogram(Name :: string(),
@@ -64,7 +64,7 @@ histogram(Name, Value) ->
 histogram(Name, Tags, Value) ->
   Now = os:system_time(seconds),
   MergedTags = maps:merge(default_tags(), Tags),
-  telemetry_store:submit(Name, % #name_tags{name = Name, tags = MergedTags},
+  telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                          Now, histogram, Value).
 
 -spec(add_gauge_func(Name :: string() | atom(),
