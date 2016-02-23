@@ -79,5 +79,5 @@ max_histo_value() ->
 
 
 opentsdb_endpoint() ->
-  application:get_env(telemetry, opentsdb_endpoint, "localhost").
+  application:get_env(telemetry, opentsdb_endpoint, false).
 
