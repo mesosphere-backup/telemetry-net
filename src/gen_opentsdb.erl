@@ -25,6 +25,7 @@ put_metric_(Name, Amount) ->
   put_metric(Name, Amount, []).
 
 put_metric_(Name, Amount, Tags) ->
+  io:format("submitting metric ~p ~p ~p~n", [Name, Amount, Tags]),
   gen_server:cast(?MODULE, {put, Name, Amount, Tags}).
 
 %% TODO add query HTTP API here, return decoded json.
