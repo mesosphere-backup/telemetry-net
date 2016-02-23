@@ -18,14 +18,13 @@ put_metric(Name, Amount) ->
   put_metric(Name, Amount, []).
 
 put_metric(Name, Amount, Tags) ->
-  io:format("submitting metric ~p~n", [Name]),
+  io:format("submitting metric ~p ~p ~p~n", [Name, Amount, Tags]),
   gen_server:call(?MODULE, {put, list_to_binary(atom_to_list(Name)), Amount, Tags}).
 
 put_metric_(Name, Amount) ->
   put_metric(Name, Amount, []).
 
 put_metric_(Name, Amount, Tags) ->
-  io:format("submitting metric ~p ~p ~p~n", [Name, Amount, Tags]),
   gen_server:cast(?MODULE, {put, Name, Amount, Tags}).
 
 %% TODO add query HTTP API here, return decoded json.

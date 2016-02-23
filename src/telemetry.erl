@@ -21,7 +21,8 @@
          add_gauge_func/2,
          remove_gauge_func/1,
          hdr_to_map/1,
-         binary_metrics_to_summary/1
+         binary_metrics_to_summary/1,
+         metrics_to_summary/1
         ]).
 
 -include("telemetry.hrl").

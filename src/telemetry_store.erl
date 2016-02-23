@@ -210,7 +210,7 @@ handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
                            dirty_counters = MergedDirtyCounters},
   MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
 
-  submit_to_opentsdb(MergedState),
+  submit_to_opentsdb(MergedMetrics),
 
   {reply, ok, MergedState};
 
@@ -417,14 +417,14 @@ submit_to_opentsdb(#metrics{time_to_histos = TimeToHistos,
                             time_to_counters = TimeToCounters,
                             dirty_histos = DirtyHistos,
                             dirty_counters = DirtyCounters}) ->
-  DirtyCounters = orddict:filter(fun (K, _V) ->
-                                     sets:is_element(K, DirtyCounters)
-                                 end, TimeToCounters),
-  DirtyHistos = orddict:filter(fun (K, _V) ->
-                                   sets:is_element(K, DirtyHistos)
-                               end, TimeToHistos),
-  Summary = telemetry:metrics_to_summary(#metrics{time_to_histos = TimeToHistos,
-                                                  time_to_counters = TimeToCounters}),
+  Counters = orddict:filter(fun (K, _V) ->
+                                sets:is_element(K, DirtyCounters)
+                            end, TimeToCounters),
+  Histos = orddict:filter(fun (K, _V) ->
+                              sets:is_element(K, DirtyHistos)
+                          end, TimeToHistos),
+  Summary = telemetry:metrics_to_summary(#metrics{time_to_histos = Histos,
+                                                  time_to_counters = Counters}),
   #{counters := CounterSummary, histograms := HistoSummary} = Summary,
   submit_counters_to_opentsdb(CounterSummary),
   submit_histos_to_opentsdb(HistoSummary),
