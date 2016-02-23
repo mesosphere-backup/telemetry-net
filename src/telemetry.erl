@@ -14,8 +14,10 @@
          stop/0,
          counter/2,
          counter/3,
+         counter/4,
          histogram/2,
          histogram/3,
+         histogram/4,
          add_gauge_func/2,
          remove_gauge_func/1,
          hdr_to_map/1,
@@ -86,6 +88,26 @@ histogram(Name, Tags, Value) ->
   MergedTags = maps:merge(default_tags(), Tags),
   telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                          Now, histogram, Value).
+
+-spec(histogram(Name :: string(),
+                Tags :: maps:map(string() | atom(), string() | atom()),
+                AggregateTags :: list(list(string() | atom())),
+                Value :: float()) -> ok).
+histogram(Name, Tags, AggregateTags, Value) ->
+  Now = os:system_time(seconds),
+  MergedDefaultTags = maps:merge(default_tags(), Tags),
+  lists:map(fun(AggTagList) ->
+                lists:map(fun(AggTags) ->
+                              AT2 = lists:map(fun (Tag) ->
+                                                  {Tag, aggregate}
+                                              end, AggTags),
+                              AggTagMap = maps:from_list(AT2),
+                              MergedTags = maps:merge(MergedDefaultTags, AggTagMap),
+                              telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
+                                                     Now, histogram, Value)
+                          end, AggTagList)
+            end, [[], AggregateTags]).
+  
 
 -spec(add_gauge_func(Name :: string() | atom(),
                      Fun :: fun()) -> ok).
