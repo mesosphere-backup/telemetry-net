@@ -36,7 +36,8 @@ stop() ->
 default_tags() ->
   {ok, HN} = inet:gethostname(),
   M = maps:new(),
-  maps:put(hostname, HN, M).
+  maps:put(hostname, HN, M),
+  M.
 
 -spec(counter(Name :: string(), Value :: float()) -> ok).
 counter(Name, Value) ->
