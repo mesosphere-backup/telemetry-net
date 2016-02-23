@@ -192,23 +192,26 @@ handle_call(snapshot, _From, State = #store{metrics = Metrics}) ->
 
 handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
                                            time_to_counters = TimeToCountersIn,
-                                           dirty_histo_times = DirtyHistoTimesIn,
-                                           dirty_counter_times = DirtyCounterTimesIn}},
+                                           dirty_histos = DirtyHistosIn,
+                                           dirty_counters = DirtyCountersIn}},
             _From,
             _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
   #metrics{time_to_histos = TimeToHistos,
            time_to_counters = TimeToCounters,
-           dirty_histo_times = DirtyHistoTimes,
-           dirty_counter_times = DirtyCounterTimes} = Metrics,
-  MergedDirtyHistoTimes = sets:union(DirtyHistoTimesIn, DirtyHistoTimes),
-  MergedDirtyCounterTimes = sets:union(DirtyCounterTimesIn, DirtyCounterTimes),
+           dirty_histos = DirtyHistos,
+           dirty_counters = DirtyCounters} = Metrics,
+  MergedDirtyHistos = sets:union(DirtyHistosIn, DirtyHistos),
+  MergedDirtyCounters = sets:union(DirtyCountersIn, DirtyCounters),
   MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
   MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
   MergedMetrics = #metrics{time_to_histos = MergedHistos,
                            time_to_counters = MergedCounters,
-                           dirty_histo_times = MergedDirtyHistoTimes,
-                           dirty_counter_times = MergedDirtyCounterTimes},
+                           dirty_histos = MergedDirtyHistos,
+                           dirty_counters = MergedDirtyCounters},
   MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
+
+  submit_to_opentsdb(MergedState),
+
   {reply, ok, MergedState};
 
 handle_call({add_gauge_func, Name, Fun}, _From, State = #store{metric_funs = MetricFuns}) ->
@@ -239,7 +242,7 @@ handle_call(Request, _From, State) ->
 handle_cast({submit, Name, Time, histogram, Value},
             State = #store{metrics = Metrics}) ->
   #metrics{time_to_histos = TimeToHistos,
-           dirty_histo_times = DirtyHistoTimes} = Metrics,
+           dirty_histos = DirtyHistos} = Metrics,
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
   TimeToHistos2 = case orddict:is_key({NormalizedTime, Name}, TimeToHistos) of
                     true ->
@@ -257,10 +260,10 @@ handle_cast({submit, Name, Time, histogram, Value},
                      ok = hdr_histogram:record(HistoRef, Value)
                  end, TimeToHistos2),
 
-  DirtyHistoTimes2 = sets:add_element(NormalizedTime, DirtyHistoTimes),
+  DirtyHistos2 = sets:add_element({NormalizedTime, Name}, DirtyHistos),
 
   RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos2,
-                               dirty_histo_times = DirtyHistoTimes2},
+                               dirty_histos = DirtyHistos2},
 
   RetState = State#store{metrics = RetMetrics},
 
@@ -269,16 +272,16 @@ handle_cast({submit, Name, Time, histogram, Value},
 handle_cast({submit, Name, Time, counter, Value},
             State = #store{metrics = Metrics}) ->
   #metrics{time_to_counters = TimeToCounters,
-           dirty_counter_times = DirtyCounterTimes} = Metrics,
+           dirty_counters = DirtyCounters} = Metrics,
 
   NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
 
   TimeToCounters2 = orddict:update_counter({NormalizedTime, Name}, Value, TimeToCounters),
 
-  DirtyCounterTimes2 = sets:add_element(NormalizedTime, DirtyCounterTimes),
+  DirtyCounters2 = sets:add_element({NormalizedTime, Name}, DirtyCounters),
 
   RetMetrics = Metrics#metrics{time_to_counters = TimeToCounters2,
-                               dirty_counter_times = DirtyCounterTimes2},
+                               dirty_counters = DirtyCounters2},
 
   RetState = State#store{metrics = RetMetrics},
 
@@ -368,44 +371,80 @@ merge_counters(TimeToCounters1, TimeToCounters2) ->
 
 
 record_gauge_funcs(Metrics = #metrics{time_to_counters = TimeToCounters,
-                                      dirty_counter_times = DirtyCounterTimes},
+                                      dirty_counters = DirtyCounters},
                    MetricFuns) ->
   Now = os:system_time(seconds),
   NormalizedTime = Now - (round(Now) rem telemetry_config:interval_seconds()),
 
-  RetCounters2 = maps:fold(fun (Name, Fun, AccIn) ->
-                               Value = Fun(),
-                               orddict:store({NormalizedTime, Name}, Value, AccIn)
-                           end, TimeToCounters, MetricFuns),
-  DirtyCounterTimes2 = sets:add_element(NormalizedTime, DirtyCounterTimes),
+  {RetCounters2, DirtyCounters2} = maps:fold(fun (Name, Fun, {AccIn, AccDirtyIn}) ->
+                                                 Value = Fun(),
+                                                 AccCounter = orddict:store({NormalizedTime, Name}, Value, AccIn),
+                                                 AccDirty = sets:add_element({NormalizedTime, Name}, AccDirtyIn),
+                                                 {AccCounter, AccDirty}
+                                             end, {TimeToCounters, DirtyCounters}, MetricFuns),
 
   Metrics#metrics{time_to_counters = RetCounters2,
-                  dirty_counter_times = DirtyCounterTimes2}.
+                  dirty_counters = DirtyCounters2}.
 
 
 -spec(export_metrics(#metrics{}) -> #binary_metrics{}).
 export_metrics(#metrics{time_to_histos = TimeToHistos,
                         time_to_counters = TimeToCounters,
-                        dirty_histo_times = DirtyHistoTimes,
-                        dirty_counter_times = DirtyCounterTimes}) ->
+                        dirty_histos = DirtyHistos,
+                        dirty_counters = DirtyCounters}) ->
 
-  RetHistos = orddict:filter(fun ({Time, _Name}, _V) ->
-                                 sets:is_element(Time, DirtyHistoTimes)
+  RetHistos = orddict:filter(fun ({Time, Name}, _V) ->
+                                 sets:is_element({Time, Name}, DirtyHistos)
                              end, TimeToHistos),
 
   RetHistos2 = orddict:map(fun ({_Time, _Name}, HistoRef) ->
                                hdr_histogram:to_binary(HistoRef)
                            end, RetHistos),
 
-  RetCounters = orddict:filter(fun ({Time, _Name}, _V) ->
-                                   sets:is_element(Time, DirtyCounterTimes)
+  RetCounters = orddict:filter(fun ({Time, Name}, _V) ->
+                                   sets:is_element({Time, Name}, DirtyCounters)
                                end, TimeToCounters),
   IsAggregator = telemetry_config:is_aggregator(),
 
   #binary_metrics{time_to_binary_histos = RetHistos2,
                   time_to_counters = RetCounters,
-                  dirty_histo_times = DirtyHistoTimes,
-                  dirty_counter_times = DirtyCounterTimes,
+                  dirty_histos = DirtyHistos,
+                  dirty_counters = DirtyCounters,
                   is_aggregate = IsAggregator}.
 
 
+submit_to_opentsdb(#metrics{time_to_histos = TimeToHistos,
+                            time_to_counters = TimeToCounters,
+                            dirty_histos = DirtyHistos,
+                            dirty_counters = DirtyCounters}) ->
+  DirtyCounters = orddict:filter(fun (K, _V) ->
+                                     sets:is_element(K, DirtyCounters)
+                                 end, TimeToCounters),
+  DirtyHistos = orddict:filter(fun (K, _V) ->
+                                   sets:is_element(K, DirtyHistos)
+                               end, TimeToHistos),
+  Summary = telemetry:metrics_to_summary(#metrics{time_to_histos = TimeToHistos,
+                                                  time_to_counters = TimeToCounters}),
+  #{counters := CounterSummary, histograms := HistoSummary} = Summary,
+  submit_counters_to_opentsdb(CounterSummary),
+  submit_histos_to_opentsdb(HistoSummary),
+
+  ok.
+
+
+submit_counters_to_opentsdb(Summary) ->
+  maps:map(fun (#name_tags{name = Name, tags = Tags}, TimeValue) ->
+               maps:map(fun (Time, Value) ->
+                            gen_opentsdb:put_metric(Name, Value, Tags)
+                        end, TimeValue)
+           end, Summary).
+
+
+submit_histos_to_opentsdb(Summary) ->
+  maps:map(fun (#name_tags{name = Name, tags = Tags}, TimeValue) ->
+               maps:map(fun (Time, HistoSummary) ->
+                            maps:map(fun (SubHistoName, Value) ->
+                                         gen_opentsdb:put_metric(Name, Value, Tags#{histo => SubHistoName})
+                                     end, HistoSummary)
+                        end, TimeValue)
+           end, Summary).

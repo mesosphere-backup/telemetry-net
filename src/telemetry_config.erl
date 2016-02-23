@@ -16,9 +16,11 @@
   forwarder_destinations/0,
   forward_to_all_resolved_hosts/0,
   is_aggregator/0,
+  enable_metric_database/0,
   max_histo_value/0,
   forward_metrics/0,
-  receive_metrics/0]).
+  receive_metrics/0,
+  opentsdb_endpoint/0]).
 
 
 interval_seconds() ->
@@ -68,7 +70,14 @@ receive_metrics() ->
   application:get_env(telemetry, receive_metrics, true).
 
 
+enable_metric_database() ->
+  application:get_env(telemetry, enable_metric_database, true).
+
+
 max_histo_value() ->
   application:get_env(telemetry, max_histo_value, 1.0E12).
 
+
+opentsdb_endpoint() ->
+  application:get_env(telemetry, opentsdb_endpoint, "localhost").
 

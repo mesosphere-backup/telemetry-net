@@ -51,6 +51,26 @@ counter(Name, Tags, Value) ->
   telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                          Now, counter, Value).
 
+-spec(counter(Name :: string(),
+              Tags :: maps:map(string() | atom(), string() | atom()),
+              AggregateTags :: list(list(string() | atom())),
+              Value :: float()) -> ok).
+counter(Name, Tags, AggregateTags, Value) ->
+  Now = os:system_time(seconds),
+  MergedDefaultTags = maps:merge(default_tags(), Tags),
+  lists:map(fun(AggTagList) ->
+                lists:map(fun(AggTags) ->
+                              AT2 = lists:map(fun (Tag) ->
+                                                  {Tag, aggregate}
+                                              end, AggTags),
+                              AggTagMap = maps:from_list(AT2),
+                              MergedTags = maps:merge(MergedDefaultTags, AggTagMap),
+                              telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
+                                                     Now, counter, Value)
+                          end, AggTagList)
+            end, [[], AggregateTags]).
+  
+
 -spec(histogram(Name :: string(), Value :: float()) -> ok).
 histogram(Name, Value) ->
   Now = os:system_time(seconds),
@@ -102,6 +122,22 @@ binary_metrics_to_summary(#binary_metrics{time_to_binary_histos = TimeToBinaryHi
   CounterExtractFun = fun (Value) -> Value end,
 
   Histograms = invert_time_name_to_value_orddict(TimeToBinaryHistos, HistoExtractFun),
+  Counters = invert_time_name_to_value_orddict(TimeToCounters, CounterExtractFun),
+
+  #{
+    counters => Counters,
+    histograms => Histograms
+  }.
+
+
+%% Converts orddicts that are {Time, Metric} -> Value to Metric -> Time -> Value
+-spec(metrics_to_summary(#metrics{}) -> maps:map(atom(), histo_summary() | counter_summary())).
+metrics_to_summary(#metrics{time_to_histos = TimeToHistos,
+                            time_to_counters = TimeToCounters}) ->
+  HistoExtractFun = fun hdr_to_map/1,
+  CounterExtractFun = fun (Value) -> Value end,
+
+  Histograms = invert_time_name_to_value_orddict(TimeToHistos, HistoExtractFun),
   Counters = invert_time_name_to_value_orddict(TimeToCounters, CounterExtractFun),
 
   #{

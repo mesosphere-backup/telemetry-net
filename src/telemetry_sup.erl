@@ -49,6 +49,15 @@ maybe_add_receiver(Children) ->
   end.
 
 
+maybe_add_opentsdb(Children) ->
+  case telemetry_config:opentsdb_endpoint() of
+    false ->
+      Children;
+    _ ->
+      [?CHILD(gen_opentsdb, worker) | Children]
+  end.
+
+
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
@@ -56,6 +65,7 @@ maybe_add_receiver(Children) ->
 init([]) ->
   Children = maybe_add_forwarder([]),
   Children2 = maybe_add_receiver(Children),
+  Children3 = maybe_add_opentsdb(Children2),
   %% always make sure telemetry_store is first in this list
-  Children3 = [?CHILD(telemetry_store, worker) | Children2],
-  {ok, {{one_for_one, 5, 10}, Children3}}.
+  Children4 = [?CHILD(telemetry_store, worker) | Children3],
+  {ok, {{one_for_one, 5, 10}, Children4}}.
