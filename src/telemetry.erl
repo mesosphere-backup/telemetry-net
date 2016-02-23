@@ -68,6 +68,7 @@ counter(Name, Tags, AggregateTags, Value) ->
                                               end, AggTags),
                               AggTagMap = maps:from_list(AT2),
                               MergedTags = maps:merge(MergedDefaultTags, AggTagMap),
+                              io:format("metric in: ~p ~p", [Name, MergedTags]),
                               telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, counter, Value)
                           end, AggTagList)
