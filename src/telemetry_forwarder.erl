@@ -127,6 +127,8 @@ handle_info(attempt_push, State) ->
   {_GoodReps, _BadReps} = gen_server:multi_call(DestinationAtoms,
                                               telemetry_receiver,
                                               {push_binary_metrics, Metrics}),
+  lager:warning("attempt push good: ~p", [_GoodReps]),
+  lager:warning("attempt push  bad: ~p", [_BadReps]),
 
   erlang:send_after(splay_ms(), self(), attempt_push),
 

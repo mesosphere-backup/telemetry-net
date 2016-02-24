@@ -80,6 +80,7 @@ init([]) ->
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_call({push_binary_metrics, Metrics}, _From, State) ->
   Res = telemetry_store:merge_binary(Metrics),
+  lager:warning("received binary push: ~p", [Metrics]),
   {reply, Res, State}.
 
 %%--------------------------------------------------------------------

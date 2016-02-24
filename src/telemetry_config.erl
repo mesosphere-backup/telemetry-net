@@ -24,7 +24,7 @@
 
 
 interval_seconds() ->
-  application:get_env(telemetry, interval_seconds, 1).
+  application:get_env(telemetry, interval_seconds, 60).
 
 
 max_intervals() ->
@@ -32,11 +32,11 @@ max_intervals() ->
 
 
 splay_seconds() ->
-  application:get_env(telemetry, splay_seconds, 0).
+  application:get_env(telemetry, splay_seconds, 10).
 
 
 forwarder_destinations() ->
-  application:get_env(telemetry, forwarder_destinations, ["localhost"]).
+  application:get_env(telemetry, forwarder_destinations, []).
 
 
 %%--------------------------------------------------------------------
@@ -63,15 +63,15 @@ is_aggregator() ->
 
 
 forward_metrics() ->
-  application:get_env(telemetry, forward_metrics, true).
+  application:get_env(telemetry, forward_metrics, false).
 
 
 receive_metrics() ->
-  application:get_env(telemetry, receive_metrics, true).
+  application:get_env(telemetry, receive_metrics, false).
 
 
 enable_metric_database() ->
-  application:get_env(telemetry, enable_metric_database, true).
+  application:get_env(telemetry, enable_metric_database, false).
 
 
 max_histo_value() ->
@@ -79,5 +79,5 @@ max_histo_value() ->
 
 
 opentsdb_endpoint() ->
-  application:get_env(telemetry, opentsdb_endpoint, "localhost").
+  application:get_env(telemetry, opentsdb_endpoint, false).
 
