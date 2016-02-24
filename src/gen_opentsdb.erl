@@ -8,7 +8,7 @@
 
 -define(TCP_DEFAULT, [binary, {packet, 0}]).
 
--record(otsdb, {host="localhost", port=4242, tags=[{<<"source">>, <<"gen_opentsdb">>}]}).
+-record(otsdb, {host="localhost", port=4248, tags=[{<<"source">>, <<"gen_opentsdb">>}]}).
 
 %% API
 start_link() ->

@@ -125,8 +125,8 @@ handle_info(attempt_push, State) ->
   %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
   %% new ones at each interval.
   {_GoodReps, _BadReps} = gen_server:multi_call(DestinationAtoms,
-                                              telemetry_receiver,
-                                              {push_binary_metrics, Metrics}),
+                                                telemetry_receiver,
+                                                {push_binary_metrics, Metrics}),
   lager:warning("attempt push good: ~p", [_GoodReps]),
   lager:warning("attempt push  bad: ~p", [_BadReps]),
 
