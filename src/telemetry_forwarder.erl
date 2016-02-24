@@ -187,7 +187,7 @@ splay_ms() ->
 
 -spec(fmt_ip({integer(), integer(), integer(), integer()}) -> atom()).
 fmt_ip({A, B, C, D}) ->
-  NodeList = io_lib:format("minuteman@~p.~p.~p.~p",
+  NodeList = io_lib:format("networkagg@~p.~p.~p.~p",
                            [A,B,C,D]),
   FlatStr = lists:flatten(NodeList),
   list_to_atom(FlatStr).
