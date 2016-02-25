@@ -8,7 +8,7 @@
 
 -define(TCP_DEFAULT, [binary, {packet, 0}]).
 
--record(otsdb, {host="localhost", port=4248, tags=[{<<"source">>, <<"gen_opentsdb">>}]}).
+-record(otsdb, {host="localhost", port=4242, tags=[{<<"source">>, <<"gen_opentsdb">>}]}).
 
 %% API
 start_link() ->
@@ -19,7 +19,7 @@ put_metric(Name, Amount) ->
 
 put_metric(Name, Amount, Tags) ->
   io:format("submitting metric ~p ~p ~p~n", [Name, Amount, Tags]),
-  gen_server:call(?MODULE, {put, list_to_binary(atom_to_list(Name)), round(Amount), Tags}).
+  gen_server:call(?MODULE, {put, Name, round(Amount), Tags}).
 
 put_metric_(Name, Amount) ->
   put_metric(Name, Amount, []).
@@ -73,6 +73,7 @@ execute(#otsdb{host=Host, port=Port}, Action) ->
   end.
 
 write(Sock, {Metric, Amount, Tags}) ->
+  SafeMetric = sanitize_to_binary(Metric),
   SafeTags = format_tags(Tags),
   T = list_to_binary(integer_to_list(unix_timestamp())),
   Msg = <<$p,$u,$t,$\s, Metric/binary, $\s, T/binary, $\s, Amount/binary, $\s, SafeTags/binary, $\n>>,
@@ -90,10 +91,15 @@ convert_amount(Amount) ->
   end,
   NewAmount.
 
+sanitize_to_binary(V) ->
+  FmtV = io_lib:format("~p", [V]),
+  SanitizedV = re:replace(FmtV, "[^A-Za-z0-9./\-_]", "", [global, {return, list}]),
+  list_to_binary(SanitizedV).
+
 format_tags(Tags) ->
   TagList = maps:to_list(Tags),
   BinaryTagList = lists:map(fun({T, V}) ->
-                                {list_to_binary(atom_to_list(T)), list_to_binary(io_lib:format("~p", [V]))}
+                                {sanitize_to_binary(T), sanitize_to_binary(V)}
                             end, TagList),
   lists:foldl(fun(E, A) ->
     <<A/binary, E/binary>>
