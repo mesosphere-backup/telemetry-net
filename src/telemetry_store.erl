@@ -273,7 +273,7 @@ handle_cast({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
   submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
                                            dirty_counters = DirtyCountersIn}),
 
-  {reply, ok, MergedState};
+  {noreply, MergedState};
 
 
 handle_cast({submit, Name, Time, counter, Value},
