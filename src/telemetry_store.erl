@@ -255,7 +255,6 @@ handle_cast({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
                                            time_to_counters = TimeToCountersIn,
                                            dirty_histos = DirtyHistosIn,
                                            dirty_counters = DirtyCountersIn}},
-            _From,
             _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
   #metrics{time_to_histos = TimeToHistos,
            time_to_counters = TimeToCounters,
