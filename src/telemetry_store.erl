@@ -83,7 +83,7 @@ reap() ->
 %%--------------------------------------------------------------------
 -spec(merge_binary(Metrics :: #binary_metrics{}) -> ok | {error, atom()}).
 merge_binary(Metrics) ->
-  gen_server:call(?SERVER, {merge_binary, Metrics}).
+  gen_server:cast(?SERVER, {merge_binary, Metrics}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -196,31 +196,6 @@ handle_call(snapshot, _From, State = #store{metrics = Metrics}) ->
   ReapedState = export_metrics(Metrics),
   {reply, ReapedState, State};
 
-handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
-                                           time_to_counters = TimeToCountersIn,
-                                           dirty_histos = DirtyHistosIn,
-                                           dirty_counters = DirtyCountersIn}},
-            _From,
-            _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
-  #metrics{time_to_histos = TimeToHistos,
-           time_to_counters = TimeToCounters,
-           dirty_histos = DirtyHistos,
-           dirty_counters = DirtyCounters} = Metrics,
-  MergedDirtyHistos = sets:union(DirtyHistosIn, DirtyHistos),
-  MergedDirtyCounters = sets:union(DirtyCountersIn, DirtyCounters),
-  MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
-  MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
-  MergedMetrics = #metrics{time_to_histos = MergedHistos,
-                           time_to_counters = MergedCounters,
-                           dirty_histos = MergedDirtyHistos,
-                           dirty_counters = MergedDirtyCounters},
-  MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
-
-  submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
-                                           dirty_counters = DirtyCountersIn}),
-
-  {reply, ok, MergedState};
-
 handle_call({add_gauge_func, Name, Fun}, _From, State = #store{metric_funs = MetricFuns}) ->
   NewMetricFuns = maps:put(Name, Fun, MetricFuns),
   NewState = State#store{metric_funs = NewMetricFuns},
@@ -275,6 +250,32 @@ handle_cast({submit, Name, Time, histogram, Value},
   RetState = State#store{metrics = RetMetrics},
 
   {noreply, RetState};
+
+handle_cast({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
+                                           time_to_counters = TimeToCountersIn,
+                                           dirty_histos = DirtyHistosIn,
+                                           dirty_counters = DirtyCountersIn}},
+            _From,
+            _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
+  #metrics{time_to_histos = TimeToHistos,
+           time_to_counters = TimeToCounters,
+           dirty_histos = DirtyHistos,
+           dirty_counters = DirtyCounters} = Metrics,
+  MergedDirtyHistos = sets:union(DirtyHistosIn, DirtyHistos),
+  MergedDirtyCounters = sets:union(DirtyCountersIn, DirtyCounters),
+  MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
+  MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
+  MergedMetrics = #metrics{time_to_histos = MergedHistos,
+                           time_to_counters = MergedCounters,
+                           dirty_histos = MergedDirtyHistos,
+                           dirty_counters = MergedDirtyCounters},
+  MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
+
+  submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
+                                           dirty_counters = DirtyCountersIn}),
+
+  {reply, ok, MergedState};
+
 
 handle_cast({submit, Name, Time, counter, Value},
             State = #store{metrics = Metrics}) ->
