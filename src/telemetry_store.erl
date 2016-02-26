@@ -210,7 +210,8 @@ handle_call({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
                            dirty_counters = MergedDirtyCounters},
   MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
 
-  submit_to_opentsdb(MergedMetrics),
+  submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
+                                           dirty_counters = DirtyCountersIn}),
 
   {reply, ok, MergedState};
 
