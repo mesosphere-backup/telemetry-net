@@ -58,7 +58,12 @@ submit(Name, Time, Type, Value) ->
 %%--------------------------------------------------------------------
 -spec(snapshot() -> #binary_metrics{}).
 snapshot() ->
-  gen_server:call(?SERVER, snapshot).
+  case ets:lookup(snapcache, last_snap) of
+    [{last_snap, Cached}] ->
+      Cached;
+    _ ->
+      gen_server:call(?SERVER, snapshot)
+  end.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -129,6 +134,7 @@ start_link() ->
   {ok, State :: #store{}} | {ok, State :: #store{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
+  snapcache = ets:new(snapcache, [named_table, set, {read_concurrency, true}]),
   {ok, #store{}}.
 
 %%--------------------------------------------------------------------
@@ -407,11 +413,14 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
                                end, TimeToCounters),
   IsAggregator = telemetry_config:is_aggregator(),
 
-  #binary_metrics{time_to_binary_histos = RetHistos2,
-                  time_to_counters = RetCounters,
-                  dirty_histos = DirtyHistos,
-                  dirty_counters = DirtyCounters,
-                  is_aggregate = IsAggregator}.
+  ExportedMetrics = #binary_metrics{time_to_binary_histos = RetHistos2,
+                                    time_to_counters = RetCounters,
+                                    dirty_histos = DirtyHistos,
+                                    dirty_counters = DirtyCounters,
+                                    is_aggregate = IsAggregator},
+  true = ets:insert(snapcache, {last_snap, ExportedMetrics}),
+  ExportedMetrics.
+
 
 
 submit_to_opentsdb(#metrics{time_to_histos = TimeToHistos,
