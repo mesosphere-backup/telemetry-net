@@ -76,7 +76,7 @@ write(Sock, {Metric, Amount, Tags}) ->
   SafeMetric = sanitize_to_binary(Metric),
   SafeTags = format_tags(Tags),
   T = list_to_binary(integer_to_list(unix_timestamp())),
-  Msg = <<$p,$u,$t,$\s, Metric/binary, $\s, T/binary, $\s, Amount/binary, $\s, SafeTags/binary, $\n>>,
+  Msg = <<$p,$u,$t,$\s, SafeMetric/binary, $\s, T/binary, $\s, Amount/binary, $\s, SafeTags/binary, $\n>>,
   Reply = gen_tcp:send(Sock, Msg),
   ok = gen_tcp:close(Sock),
   Reply.
