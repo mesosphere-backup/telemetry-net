@@ -60,6 +60,7 @@ counter(Name, Tags, Value) ->
               AggregateTags :: list(list(string() | atom())),
               Value :: float()) -> ok).
 counter(Name, Tags, AggregateTags, Value) ->
+  AggregateTags2 = add_empty_list_if_not_present(AggregateTags),
   Now = os:system_time(seconds),
   MergedDefaultTags = maps:merge(default_tags(), Tags),
   lists:map(fun(AggTagList) ->
@@ -72,7 +73,7 @@ counter(Name, Tags, AggregateTags, Value) ->
                               telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, counter, Value)
                           end, AggTagList)
-            end, [[], AggregateTags]).
+            end, [[], AggregateTags2]).
   
 
 -spec(histogram(Name :: string(), Value :: float()) -> ok).
@@ -96,6 +97,7 @@ histogram(Name, Tags, Value) ->
                 AggregateTags :: list(list(string() | atom())),
                 Value :: float()) -> ok).
 histogram(Name, Tags, AggregateTags, Value) ->
+  AggregateTags2 = add_empty_list_if_not_present(AggregateTags),
   Now = os:system_time(seconds),
   MergedDefaultTags = maps:merge(default_tags(), Tags),
   lists:map(fun(AggTagList) ->
@@ -108,7 +110,7 @@ histogram(Name, Tags, AggregateTags, Value) ->
                               telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, histogram, Value)
                           end, AggTagList)
-            end, [[], AggregateTags]).
+            end, [[], AggregateTags2]).
   
 
 -spec(add_gauge_func(Name :: string() | atom(),
@@ -192,3 +194,11 @@ binary_histo_to_summary(BinaryHisto) ->
   Summary = hdr_to_map(HistoRef),
   hdr_histogram:close(HistoRef),
   Summary.
+
+add_empty_list_if_not_present(L) ->
+  case lists:member([], L) of
+    true ->
+      L;
+    false ->
+      [[] | L]
+  end.
