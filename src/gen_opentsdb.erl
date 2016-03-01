@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, put_metric_batch/2, put_metric/2, put_metric/3, put_metric_/2, put_metric_/3, q/1]).
+-export([start_link/0, put_metric_batch/1, put_metric/2, put_metric/3, put_metric_/2, put_metric_/3, q/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
