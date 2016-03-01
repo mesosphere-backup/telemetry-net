@@ -112,7 +112,7 @@ convert_amount(Amount) ->
 
 sanitize_to_binary(V) ->
   FmtV = io_lib:format("~p", [V]),
-  SanitizedV = re:replace(FmtV, "[^A-Za-z0-9./\-_]", "", [global, {return, list}]),
+  SanitizedV = re:replace(FmtV, "[^A-Za-z0-9./\\-_]", "", [global, {return, list}]),
   list_to_binary(SanitizedV).
 
 format_tags(Tags) ->
