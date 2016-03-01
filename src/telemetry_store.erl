@@ -452,10 +452,11 @@ submit_counters_to_opentsdb(Summary) ->
 
 
 submit_histos_to_opentsdb(Summary) ->
-  maps:map(fun (#name_tags{name = Name, tags = Tags}, TimeValue) ->
-               maps:map(fun (Time, HistoSummary) ->
-                            maps:map(fun (SubHistoName, Value) ->
-                                         gen_opentsdb:put_metric(Name, Value, Tags#{histo => SubHistoName})
-                                     end, HistoSummary)
-                        end, TimeValue)
-           end, Summary).
+  Metrics = maps:fold(fun (#name_tags{name = Name, tags = Tags}, TimeValue, AccIn) ->
+                          maps:fold(fun (Time, HistoSummary, SubAccIn) ->
+                                        maps:fold(fun (SubHistoName, Value, SubSubAccIn) ->
+                                                      [{Name, Time, Value, Tags#{histo => SubHistoName}} | SubSubAccIn]
+                                                  end, SubAccIn, HistoSummary)
+                                    end, AccIn, TimeValue)
+                      end, [], Summary),
+  gen_opentsdb:put_metric_batch(Metrics).
