@@ -14,11 +14,13 @@
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+put_metric_batch(Metrics) ->
+  gen_server:call(?MODULE, {put_batch, Metrics}).
+
 put_metric(Name, Amount) ->
   put_metric(Name, Amount, []).
 
 put_metric(Name, Amount, Tags) ->
-  io:format("submitting metric ~p ~p ~p~n", [Name, Amount, Tags]),
   gen_server:call(?MODULE, {put, Name, round(Amount), Tags}).
 
 put_metric_(Name, Amount) ->
@@ -37,6 +39,9 @@ init([]) ->
 
 handle_call({put, Metric, Amount, Tags}, _From, State) ->
   Reply = execute(State, {put, Metric, Amount, Tags}),
+  {reply, Reply, State};
+handle_call({put_batch, Metrics}, _From, State) ->
+  Reply = execute(State, {put_batch, Metrics}),
   {reply, Reply, State};
 handle_call(_Request, _From, State) ->
 	{reply, ok, State}.
@@ -61,25 +66,38 @@ unix_timestamp() ->
   round(os:system_time() / 1000000000).
 
 execute(#otsdb{host=Host, port=Port}, Action) ->
+  Time = list_to_binary(integer_to_list(unix_timestamp())),
   case Action of
     {put, Metric, Amount, Tags} ->
       case convert_amount(Amount) of
         {ok, SafeAmount} ->
-          {ok, Sock} = gen_tcp:connect(Host, Port, ?TCP_DEFAULT),
-          write(Sock, {Metric, SafeAmount, Tags});
+          Msg = opentsdb_fmt(Metric, Time, SafeAmount, Tags),
+          send(Host, Port, Msg);
         _ -> {error, invalid_amount}
       end;
+    {put_batch, Metrics} ->
+      Msg = lists:map(fun ({Name, Time, Amount, Tags}) ->
+                          case convert_amount(Amount) of
+                            {ok, SafeAmount} ->
+                              opentsdb_fmt(Name, Time, SafeAmount, Tags);
+                            _ ->
+                              []
+                          end
+                      end, Metrics),
+      send(Host, Port, Msg);
     _ -> {error, invalid_action}
   end.
 
-write(Sock, {Metric, Amount, Tags}) ->
-  SafeMetric = sanitize_to_binary(Metric),
-  SafeTags = format_tags(Tags),
-  T = list_to_binary(integer_to_list(unix_timestamp())),
-  Msg = <<$p,$u,$t,$\s, SafeMetric/binary, $\s, T/binary, $\s, Amount/binary, $\s, SafeTags/binary, $\n>>,
+send(Host, Port, Msg) ->
+  {ok, Sock} = gen_tcp:connect(Host, Port, ?TCP_DEFAULT),
   Reply = gen_tcp:send(Sock, Msg),
   ok = gen_tcp:close(Sock),
   Reply.
+
+opentsdb_fmt(Metric, Time, Amount, Tags) ->
+  SafeMetric = sanitize_to_binary(Metric),
+  SafeTags = format_tags(Tags),
+  <<$p,$u,$t,$\s, SafeMetric/binary, $\s, Time/binary, $\s, Amount/binary, $\s, SafeTags/binary, $\n>>.
 
 convert_amount(Amount) ->
   NewAmount = case Amount of
