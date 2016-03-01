@@ -428,13 +428,15 @@ submit_to_opentsdb(#metrics{time_to_histos = TimeToHistos,
                             dirty_histos = DirtyHistos,
                             dirty_counters = DirtyCounters}) ->
   %% TODO(tyler) rip out this filthy hack
-  Max = sets:fold(fun (E, Acc) -> max(E, Acc) end, 0, DirtyHistos),
-  MaxSet = sets:from_list([Max]),
+  Now = os:system_time(seconds),
+  NormalizedTime = Now - (round(Now) rem telemetry_config:interval_seconds()),
+  Gate = NormalizedTime - telemetry_config:interval_seconds(),
+
   Counters = orddict:filter(fun (K, _V) ->
-                                sets:is_element(K, MaxSet)
+                                K > Gate
                             end, TimeToCounters),
   Histos = orddict:filter(fun (K, _V) ->
-                              sets:is_element(K, MaxSet)
+                              K > Gate
                           end, TimeToHistos),
   Summary = telemetry:metrics_to_summary(#metrics{time_to_histos = Histos,
                                                   time_to_counters = Counters}),
