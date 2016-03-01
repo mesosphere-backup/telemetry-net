@@ -430,7 +430,7 @@ submit_to_opentsdb(#metrics{time_to_histos = TimeToHistos,
   %% TODO(tyler) rip out this filthy hack
   Now = os:system_time(seconds),
   NormalizedTime = Now - (round(Now) rem telemetry_config:interval_seconds()),
-  Gate = NormalizedTime - telemetry_config:interval_seconds(),
+  Gate = NormalizedTime - telemetry_config:interval_seconds() + 1,
 
   Counters = orddict:filter(fun (K, _V) ->
                                 K > Gate
