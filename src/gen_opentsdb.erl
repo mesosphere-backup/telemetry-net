@@ -66,11 +66,11 @@ unix_timestamp() ->
   round(os:system_time() / 1000000000).
 
 execute(#otsdb{host=Host, port=Port}, Action) ->
-  Time = list_to_binary(integer_to_list(unix_timestamp())),
   case Action of
     {put, Metric, Amount, Tags} ->
       case convert_amount(Amount) of
         {ok, SafeAmount} ->
+          Time = list_to_binary(integer_to_list(unix_timestamp())),
           Msg = opentsdb_fmt(Metric, Time, SafeAmount, Tags),
           send(Host, Port, Msg);
         _ -> {error, invalid_amount}
@@ -79,7 +79,8 @@ execute(#otsdb{host=Host, port=Port}, Action) ->
       Msg = lists:map(fun ({Name, Time, Amount, Tags}) ->
                           case convert_amount(Amount) of
                             {ok, SafeAmount} ->
-                              opentsdb_fmt(Name, Time, SafeAmount, Tags);
+                              BinTime = list_to_binary(integer_to_list(Time)),
+                              opentsdb_fmt(Name, BinTime, SafeAmount, Tags);
                             _ ->
                               []
                           end
