@@ -8,7 +8,10 @@
 
 -define(TCP_DEFAULT, [binary, {packet, 0}]).
 
--record(otsdb, {host="localhost", port=4242, tags=[{<<"source">>, <<"gen_opentsdb">>}]}).
+-record(otsdb, {
+  host = telemetry_config:opentsdb_endpoint(),
+  port = 4242
+  }).
 
 %% API
 start_link() ->
@@ -64,6 +67,9 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 unix_timestamp() ->
   round(os:system_time() / 1000000000).
+
+execute(#otsdb{host=false}, _Action) ->
+  {error, no_opentsdb_endpoint_configured};
 
 execute(#otsdb{host=Host, port=Port}, Action) ->
   case Action of

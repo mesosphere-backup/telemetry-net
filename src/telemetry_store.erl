@@ -270,8 +270,12 @@ handle_cast({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
                            dirty_counters = MergedDirtyCounters},
   MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
 
-  submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
-                                           dirty_counters = DirtyCountersIn}),
+  case telemetry_config:opentsdb_endpoint() of
+    false -> ok;
+    _ ->
+      submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
+                                               dirty_counters = DirtyCountersIn})
+  end,
 
   {noreply, MergedState};
 

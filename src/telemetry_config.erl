@@ -20,7 +20,9 @@
   max_histo_value/0,
   forward_metrics/0,
   receive_metrics/0,
-  opentsdb_endpoint/0]).
+  opentsdb_endpoint/0,
+  rendered_metric_receiver_modules/0
+  ]).
 
 
 interval_seconds() ->
@@ -80,4 +82,8 @@ max_histo_value() ->
 
 opentsdb_endpoint() ->
   application:get_env(telemetry, opentsdb_endpoint, false).
+
+
+rendered_metric_receiver_modules() ->
+  application:get_env(telemetry, rendered_metric_receiver_modules, []).
 
