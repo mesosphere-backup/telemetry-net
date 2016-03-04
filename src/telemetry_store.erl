@@ -60,8 +60,10 @@ submit(Name, Time, Type, Value) ->
 snapshot() ->
   case ets:lookup(snapcache, last_snap) of
     [{last_snap, Cached}] ->
+      lager:debug("returning cached snapshot"),
       Cached;
     _ ->
+      lager:debug("returning generated snapshot"),
       gen_server:call(?SERVER, snapshot)
   end.
 
@@ -422,6 +424,7 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
                                     dirty_histos = DirtyHistos,
                                     dirty_counters = DirtyCounters,
                                     is_aggregate = IsAggregator},
+  lager:debug("populating the snapcache with binary metrics"),
   true = ets:insert(snapcache, {last_snap, ExportedMetrics}),
   ExportedMetrics.
 
