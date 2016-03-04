@@ -406,21 +406,14 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
                         dirty_histos = DirtyHistos,
                         dirty_counters = DirtyCounters}) ->
 
-  RetHistos = orddict:filter(fun ({Time, Name}, _V) ->
-                                 sets:is_element({Time, Name}, DirtyHistos)
-                             end, TimeToHistos),
-
-  RetHistos2 = orddict:map(fun ({_Time, _Name}, HistoRef) ->
+  RetHistos = orddict:map(fun ({_Time, _Name}, HistoRef) ->
                                hdr_histogram:to_binary(HistoRef)
-                           end, RetHistos),
+                           end, TimeToHistos),
 
-  RetCounters = orddict:filter(fun ({Time, Name}, _V) ->
-                                   sets:is_element({Time, Name}, DirtyCounters)
-                               end, TimeToCounters),
   IsAggregator = telemetry_config:is_aggregator(),
 
-  ExportedMetrics = #binary_metrics{time_to_binary_histos = RetHistos2,
-                                    time_to_counters = RetCounters,
+  ExportedMetrics = #binary_metrics{time_to_binary_histos = RetHistos,
+                                    time_to_counters = TimeToCounters,
                                     dirty_histos = DirtyHistos,
                                     dirty_counters = DirtyCounters,
                                     is_aggregate = IsAggregator},
