@@ -223,20 +223,18 @@ handle_cast({submit, Name, Time, histogram, Value},
                     true ->
                       TimeToHistos;
                     false ->
-                      %% This opens up a histogram with a max value of 1M,
-                      %% which records up to 3 significant figures of a value.
                       Histo = telemetry_histo:new(),
                       orddict:store({NormalizedTime, Name}, Histo, TimeToHistos)
                   end,
 
-  orddict:update({NormalizedTime, Name},
-                 fun (Histo) ->
-                     ok = telemetry_histo:record(Histo, Value)
-                 end, TimeToHistos2),
+  TimeToHistos3 = orddict:update({NormalizedTime, Name},
+                                 fun (Histo) ->
+                                     telemetry_histo:record(Histo, Value)
+                                 end, TimeToHistos2),
 
   DirtyHistos2 = sets:add_element({NormalizedTime, Name}, DirtyHistos),
 
-  RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos2,
+  RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos3,
                                dirty_histos = DirtyHistos2},
 
   RetState = State#store{metrics = RetMetrics},
