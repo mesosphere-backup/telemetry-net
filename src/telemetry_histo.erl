@@ -13,7 +13,8 @@
 -export([new/0,
          percentile/2,
          record/2,
-         merge/2]).
+         merge/2,
+         map_summary/1]).
 
 -record(histo, {
   total = 0 :: integer(),
@@ -49,8 +50,8 @@ record(#histo{total = Total, values = Values}, V) ->
   #histo{total = Total + 1, values = NewValues}.
 
 merge(#histo{total = T1, values = V1}, #histo{total = T2, values = V2}) ->
-  MergeFun = fun(K, V1, V2) ->
-                 V1 + V2
+  MergeFun = fun(_K, Count1, Count2) ->
+                 Count1 + Count2
              end,
   NewValues = orddict:merge(MergeFun, V1, V2),
   #histo{total = T1 + T2, values = NewValues}.

@@ -20,7 +20,6 @@
          histogram/4,
          add_gauge_func/2,
          remove_gauge_func/1,
-         metrics_to_summary/1,
          metrics_to_summary/1
         ]).
 

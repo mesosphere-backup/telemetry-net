@@ -393,9 +393,7 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
 
 
 submit_to_opentsdb(#metrics{time_to_histos = TimeToHistos,
-                            time_to_counters = TimeToCounters,
-                            dirty_histos = DirtyHistos,
-                            dirty_counters = DirtyCounters}) ->
+                            time_to_counters = TimeToCounters}) ->
   %% TODO(tyler) rip out this filthy hack
   Now = os:system_time(seconds),
   NormalizedTime = Now - (round(Now) rem telemetry_config:interval_seconds()),
