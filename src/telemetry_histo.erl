@@ -38,7 +38,7 @@ percentile(#histo{total = T, values = V}, Pct) when Pct >= 0 andalso Pct =< 1.0 
                      false ->
                        {notfound, NewSoFar}
                    end;
-                 {found, _} ->
+                 _ ->
                    AccIn
                end
            end,
