@@ -78,8 +78,8 @@ init([]) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_call({push_binary_metrics, Metrics}, _From, State) ->
-  Res = telemetry_store:merge_binary(Metrics),
+handle_call({push_metrics, Metrics}, _From, State) ->
+  Res = telemetry_store:merge(Metrics),
   {reply, Res, State}.
 
 %%--------------------------------------------------------------------

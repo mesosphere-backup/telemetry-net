@@ -126,7 +126,7 @@ handle_info(attempt_push, State) ->
   %% new ones at each interval.
   {_GoodReps, _BadReps} = gen_server:multi_call(DestinationAtoms,
                                                 telemetry_receiver,
-                                                {push_binary_metrics, Metrics}),
+                                                {push_metrics, Metrics}),
   lager:warning("attempt push good: ~p", [_GoodReps]),
   lager:warning("attempt push  bad: ~p", [_BadReps]),
 
