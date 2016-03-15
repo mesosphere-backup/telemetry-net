@@ -26,7 +26,7 @@ new() ->
 
 percentile(#histo{total = 0}, _Pct) ->
   {error, empty_histo};
-percentile(#histo{total = T, values = V}, Pct) ->
+percentile(#histo{total = T, values = V}, Pct) when Pct >= 0 andalso Pct =< 1.0 ->
   Threshold = T * Pct,
   PctFun = fun(CompK, Count, AccIn) ->
                case AccIn of
@@ -34,7 +34,7 @@ percentile(#histo{total = T, values = V}, Pct) ->
                    NewSoFar = Count + SoFar,
                    case NewSoFar >= Threshold of
                      true ->
-                       {found, decompress(CompK)};
+                       decompress(CompK);
                      false ->
                        {notfound, NewSoFar}
                    end;
@@ -65,15 +65,15 @@ decompress(V) -> -1.0 * (math:exp(abs(V) / 100) - 1.0).
 map_summary(H = #histo{total = Total}) ->
   #{
     min => percentile(H, 0),
-    median => percentile(H, 50),
-    max => percentile(H, 100),
-    p75 => percentile(H, 75.0),
-    p90 => percentile(H, 90.0),
-    p95 => percentile(H, 95.0),
-    p99 => percentile(H, 99.0),
-    p999 => percentile(H, 99.9),
-    p9999 => percentile(H, 99.99),
-    p99999 => percentile(H, 99.999),
+    median => percentile(H, 0.50),
+    max => percentile(H, 1.0),
+    p75 => percentile(H, 0.75),
+    p90 => percentile(H, 0.9),
+    p95 => percentile(H, 0.95),
+    p99 => percentile(H, 0.99),
+    p999 => percentile(H, 0.999),
+    p9999 => percentile(H, 0.9999),
+    p99999 => percentile(H, 0.99999),
     total_count => Total
   }.
 
