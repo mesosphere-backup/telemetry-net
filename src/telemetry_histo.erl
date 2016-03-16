@@ -57,10 +57,10 @@ merge(#histo{total = T1, values = V1}, #histo{total = T2, values = V2}) ->
   #histo{total = T1 + T2, values = NewValues}.
 
 compress(V) when V >= 0 -> 100 * math:log(1.0 + abs(V)) + 0.5;
-compress(V) -> -1.0 * (100 * math:log(1.0 + abs(V)) + 0.5).
+compress(V) -> -1.0 * compress(-1 * V).
 
 decompress(V) when V >= 0 -> math:exp(abs(V) / 100) - 1.0;
-decompress(V) -> -1.0 * (math:exp(abs(V) / 100) - 1.0).
+decompress(V) -> -1.0 * decompress(-1 * V).
 
 map_summary(H = #histo{total = Total}) ->
   #{
