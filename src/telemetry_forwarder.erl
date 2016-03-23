@@ -124,9 +124,14 @@ handle_info(attempt_push, State) ->
 
   %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
   %% new ones at each interval.
-  {_GoodReps, _BadReps} = gen_server:multi_call(DestinationAtoms,
-                                                telemetry_receiver,
-                                                {push_metrics, Metrics}),
+  {_GoodReps, BadReps} = gen_server:multi_call(DestinationAtoms,
+                                               telemetry_receiver,
+                                               {push_metrics, Metrics}),
+
+  case BadReps of
+    [] -> ok;
+    _ -> lager:warning("failed to submit metrics to ~p", [BadReps])
+  end,
 
   erlang:send_after(splay_ms(), self(), attempt_push),
 
