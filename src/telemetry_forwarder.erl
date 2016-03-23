@@ -116,7 +116,7 @@ handle_info(attempt_push, State) ->
   UseAllEndpointsPerRecord = telemetry_config:forward_to_all_resolved_hosts(),
 
   Destinations = lists:flatmap(fun (Name) ->
-                                   Records = inet_res:lookup(Name, in, a),
+                                   {ok, Records} = inet:getaddrs(Name, inet),
                                    take_first_or_all(UseAllEndpointsPerRecord, Records)
                                end, Endpoints),
 
