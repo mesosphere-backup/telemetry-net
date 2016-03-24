@@ -56,7 +56,7 @@ merge(#histo{total = T1, values = V1}, #histo{total = T2, values = V2}) ->
   NewValues = orddict:merge(MergeFun, V1, V2),
   #histo{total = T1 + T2, values = NewValues}.
 
-compress(V) when V >= 0 -> 100 * math:log(1.0 + abs(V)) + 0.5;
+compress(V) when V >= 0 -> round(100 * math:log(1.0 + abs(V)) + 0.5);
 compress(V) -> -1.0 * compress(-1 * V).
 
 decompress(V) when V >= 0 -> math:exp(abs(V) / 100) - 1.0;
