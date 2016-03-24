@@ -15,7 +15,7 @@
   submit/4,
   snapshot/0,
   reap/0,
-  merge_binary/1,
+  merge/1,
   add_gauge_func/2,
   remove_gauge_func/1
   ]).
@@ -56,7 +56,7 @@ submit(Name, Time, Type, Value) ->
 %% Get a snapshot of current metrics.
 %% @end
 %%--------------------------------------------------------------------
--spec(snapshot() -> #binary_metrics{}).
+-spec(snapshot() -> #metrics{}).
 snapshot() ->
   case ets:lookup(snapcache, last_snap) of
     [{last_snap, Cached}] ->
@@ -70,7 +70,7 @@ snapshot() ->
 %%--------------------------------------------------------------------
 %% @doc
 %% For all times which have had metrics submitted in the last interval,
-%% collect the counters and hdr_histogram binary exports.
+%% collect the counters and histogram exports.
 %% @end
 %%--------------------------------------------------------------------
 -spec(reap() -> {ok, term()} | {error, atom()}).
@@ -79,13 +79,12 @@ reap() ->
 
 %%--------------------------------------------------------------------
 %% @doc
-%% Take counters and serialized hdr_histograms and merge them with our
-%% state.
+%% Take counters and histograms and merge them with our state.
 %% @end
 %%--------------------------------------------------------------------
--spec(merge_binary(Metrics :: #binary_metrics{}) -> ok | {error, atom()}).
-merge_binary(Metrics) ->
-  gen_server:cast(?SERVER, {merge_binary, Metrics}).
+-spec(merge(Metrics :: #metrics{}) -> ok | {error, atom()}).
+merge(Metrics) ->
+  gen_server:cast(?SERVER, {merge, Metrics}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -148,8 +147,8 @@ init([]) ->
 %%--------------------------------------------------------------------
 -spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
   State :: #store{}) ->
-  {reply, Reply :: #binary_metrics{}, NewState :: #store{}} |
-  {reply, Reply :: #binary_metrics{}, NewState :: #store{}, timeout() | hibernate} |
+  {reply, Reply :: #metrics{}, NewState :: #store{}} |
+  {reply, Reply :: #metrics{}, NewState :: #store{}, timeout() | hibernate} |
   {noreply, NewState :: #store{}} |
   {noreply, NewState :: #store{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #store{}} |
@@ -170,19 +169,11 @@ handle_call(reap, _From, #store{metrics = Metrics, metric_funs = MetricFuns}) ->
   CutoffTime = Now - (telemetry_config:interval_seconds() *
                       telemetry_config:max_intervals()),
 
-  TimeToHistos2 = orddict:filter(fun ({Time, _Name}, HistoRef) ->
-                                     case Time >= CutoffTime of
-                                       true ->
-                                         true;
-                                       false ->
-                                         hdr_histogram:close(HistoRef),
-                                         false
-                                     end
-                                 end, TimeToHistos),
-
-  TimeToCounters2 = orddict:filter(fun ({Time, _Name}, _V) ->
-                                       Time >= CutoffTime
-                                   end, TimeToCounters),
+  TimeGate = fun ({Time, _Name}, _V) ->
+                 Time >= CutoffTime
+             end,
+  TimeToHistos2 = orddict:filter(TimeGate, TimeToHistos),
+  TimeToCounters2 = orddict:filter(TimeGate, TimeToCounters),
 
   %% Only nodes in aggregator mode should retain non-partial metrics.
   IsAggregator = telemetry_config:is_aggregator(),
@@ -232,31 +223,28 @@ handle_cast({submit, Name, Time, histogram, Value},
                     true ->
                       TimeToHistos;
                     false ->
-                      %% This opens up a histogram with a max value of 1M,
-                      %% which records up to 3 significant figures of a value.
-                      MaxVal = telemetry_config:max_histo_value(),
-                      {ok, HistoRef} = hdr_histogram:open(round(MaxVal), 3),
-                      orddict:store({NormalizedTime, Name}, HistoRef, TimeToHistos)
+                      Histo = telemetry_histo:new(),
+                      orddict:store({NormalizedTime, Name}, Histo, TimeToHistos)
                   end,
 
-  orddict:update({NormalizedTime, Name},
-                 fun (HistoRef) ->
-                     ok = hdr_histogram:record(HistoRef, Value)
-                 end, TimeToHistos2),
+  TimeToHistos3 = orddict:update({NormalizedTime, Name},
+                                 fun (Histo) ->
+                                     telemetry_histo:record(Histo, Value)
+                                 end, TimeToHistos2),
 
   DirtyHistos2 = sets:add_element({NormalizedTime, Name}, DirtyHistos),
 
-  RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos2,
+  RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos3,
                                dirty_histos = DirtyHistos2},
 
   RetState = State#store{metrics = RetMetrics},
 
   {noreply, RetState};
 
-handle_cast({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryHistosIn,
-                                           time_to_counters = TimeToCountersIn,
-                                           dirty_histos = DirtyHistosIn,
-                                           dirty_counters = DirtyCountersIn}},
+handle_cast({merge, #metrics{time_to_histos = TimeToHistosIn,
+                             time_to_counters = TimeToCountersIn,
+                             dirty_histos = DirtyHistosIn,
+                             dirty_counters = DirtyCountersIn}},
             _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
   #metrics{time_to_histos = TimeToHistos,
            time_to_counters = TimeToCounters,
@@ -265,7 +253,7 @@ handle_cast({merge_binary, #binary_metrics{time_to_binary_histos = TimeToBinaryH
   MergedDirtyHistos = sets:union(DirtyHistosIn, DirtyHistos),
   MergedDirtyCounters = sets:union(DirtyCountersIn, DirtyCounters),
   MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
-  MergedHistos = merge_histos(TimeToBinaryHistosIn, TimeToHistos),
+  MergedHistos = merge_histos(TimeToHistosIn, TimeToHistos),
   MergedMetrics = #metrics{time_to_histos = MergedHistos,
                            time_to_counters = MergedCounters,
                            dirty_histos = MergedDirtyHistos,
@@ -350,30 +338,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
-%% Takes an orddict of {Time, Name} -> hdr_histogram exported binaries,
-%% and merges it with an orddict of {Time, Name} -> hdr_histogram
+%% Takes an orddict of {Time, Name} -> histogram exported binaries,
+%% and merges it with an orddict of {Time, Name} -> histogram
 %% local instances.
 %% @end
 %%--------------------------------------------------------------------
-merge_histos(TimeToBinaryHistos, TimeToHistos) ->
-  %% Make sure the non-binary orddict has all keys present, or
-  %% the binary will take precedence.
-  InitializedOrddict = orddict:fold(fun (K, _V, AccIn) ->
-                                        case orddict:is_key(K, AccIn) of
-                                          false ->
-                                            {ok, HistoRef} = hdr_histogram:open(1000000, 3),
-                                            orddict:store(K, HistoRef, AccIn);
-                                          true ->
-                                            AccIn
-                                        end
-                                    end, TimeToHistos, TimeToBinaryHistos),
-  MergeFunc = fun (_K, HistoBinary, HistoRef) ->
-                  {ok, HistoRefToMerge} = hdr_histogram:from_binary(HistoBinary),
-                  hdr_histogram:add(HistoRef, HistoRefToMerge),
-                  hdr_histogram:close(HistoRefToMerge),
-                  HistoRef
+merge_histos(TimeToHistos1, TimeToHistos2) ->
+  MergeFunc = fun (_K, Histo1, Histo2) ->
+                  telemetry_histo:merge(Histo1, Histo2)
               end,
-  orddict:merge(MergeFunc, TimeToBinaryHistos, InitializedOrddict).
+  orddict:merge(MergeFunc, TimeToHistos1, TimeToHistos2).
 
 
 merge_counters(TimeToCounters1, TimeToCounters2) ->
@@ -400,33 +374,24 @@ record_gauge_funcs(Metrics = #metrics{time_to_counters = TimeToCounters,
                   dirty_counters = DirtyCounters2}.
 
 
--spec(export_metrics(#metrics{}) -> #binary_metrics{}).
+-spec(export_metrics(#metrics{}) -> #metrics{}).
 export_metrics(#metrics{time_to_histos = TimeToHistos,
                         time_to_counters = TimeToCounters,
                         dirty_histos = DirtyHistos,
                         dirty_counters = DirtyCounters}) ->
 
-  RetHistos = orddict:map(fun ({_Time, _Name}, HistoRef) ->
-                               hdr_histogram:to_binary(HistoRef)
-                           end, TimeToHistos),
-
-  IsAggregator = telemetry_config:is_aggregator(),
-
-  ExportedMetrics = #binary_metrics{time_to_binary_histos = RetHistos,
-                                    time_to_counters = TimeToCounters,
-                                    dirty_histos = DirtyHistos,
-                                    dirty_counters = DirtyCounters,
-                                    is_aggregate = IsAggregator},
-  lager:debug("populating the snapcache with binary metrics"),
+  ExportedMetrics = #metrics{time_to_histos = TimeToHistos,
+                             time_to_counters = TimeToCounters,
+                             dirty_histos = DirtyHistos,
+                             dirty_counters = DirtyCounters},
+  lager:debug("populating the snapcache with metrics"),
   true = ets:insert(snapcache, {last_snap, ExportedMetrics}),
   ExportedMetrics.
 
 
 
 submit_to_opentsdb(#metrics{time_to_histos = TimeToHistos,
-                            time_to_counters = TimeToCounters,
-                            dirty_histos = DirtyHistos,
-                            dirty_counters = DirtyCounters}) ->
+                            time_to_counters = TimeToCounters}) ->
   %% TODO(tyler) rip out this filthy hack
   Now = os:system_time(seconds),
   NormalizedTime = Now - (round(Now) rem telemetry_config:interval_seconds()),

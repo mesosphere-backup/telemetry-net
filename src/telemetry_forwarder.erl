@@ -116,7 +116,7 @@ handle_info(attempt_push, State) ->
   UseAllEndpointsPerRecord = telemetry_config:forward_to_all_resolved_hosts(),
 
   Destinations = lists:flatmap(fun (Name) ->
-                                   Records = inet_res:lookup(Name, in, a),
+                                   {ok, Records} = inet:getaddrs(Name, inet),
                                    take_first_or_all(UseAllEndpointsPerRecord, Records)
                                end, Endpoints),
 
@@ -124,11 +124,14 @@ handle_info(attempt_push, State) ->
 
   %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
   %% new ones at each interval.
-  {_GoodReps, _BadReps} = gen_server:multi_call(DestinationAtoms,
-                                                telemetry_receiver,
-                                                {push_binary_metrics, Metrics}),
-  lager:warning("attempt push good: ~p", [_GoodReps]),
-  lager:warning("attempt push  bad: ~p", [_BadReps]),
+  {_GoodReps, BadReps} = gen_server:multi_call(DestinationAtoms,
+                                               telemetry_receiver,
+                                               {push_metrics, Metrics}),
+
+  case BadReps of
+    [] -> ok;
+    _ -> lager:warning("failed to submit metrics to ~p", [BadReps])
+  end,
 
   erlang:send_after(splay_ms(), self(), attempt_push),
 
