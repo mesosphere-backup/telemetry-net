@@ -113,13 +113,8 @@ handle_info(attempt_push, State) ->
   Metrics = telemetry_store:reap(),
 
   Endpoints = telemetry_config:forwarder_destinations(),
-  UseAllEndpointsPerRecord = telemetry_config:forward_to_all_resolved_hosts(),
 
-  Destinations = lists:flatmap(fun (Name) ->
-                                   {ok, Records} = inet:getaddrs(Name, inet),
-                                   take_first_or_all(UseAllEndpointsPerRecord, Records)
-                               end, Endpoints),
-
+  Destinations = get_destinations(Endpoints),
   DestinationAtoms = lists:map(fun fmt_ip/1, Destinations),
 
   %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
@@ -211,4 +206,20 @@ take_first_or_all(false, []) ->
   [];
 take_first_or_all(false, [A | _]) ->
   [A].
+
+-spec(get_destinations([string()]) -> [inet:ipv4_address()]).
+get_destinations(Endpoints) ->
+  lists:flatmap(fun name_to_ips/1, Endpoints).
+
+name_to_ips(Name) ->
+  UseAllEndpointsPerRecord = telemetry_config:forward_to_all_resolved_hosts(),
+  case inet:getaddrs(Name, inet) of
+    {ok, Records} ->
+      take_first_or_all(UseAllEndpointsPerRecord, Records);
+    {error, Error} ->
+      lager:warning("Could not resolve name ~s: ~p", [Name, Error]),
+      []
+  end.      
+  
+
 
