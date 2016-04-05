@@ -79,7 +79,7 @@ forward_metrics() ->
 
   Configured = application:get_env(telemetry, forward_metrics, false),
 
-  Configured and not Overridden.
+  Configured andalso not Overridden.
 
 
 receive_metrics() ->
