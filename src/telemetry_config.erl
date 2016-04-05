@@ -64,7 +64,22 @@ is_aggregator() ->
 
 
 forward_metrics() ->
-  application:get_env(telemetry, forward_metrics, false).
+  OverridePath = application:get_env(telemetry, override_path, false),
+
+  Overridden = case OverridePath of
+                 false ->
+                   false;
+                 Path ->
+                   {ok, FD} = file:open(Path, [binary, raw, read]),
+                   {ok, JSON} = file:read(FD, 32768),
+                   DecodedList = jsx:decode(JSON),
+                   DecodedMap = maps:from_list(DecodedList),
+                   maps:get(<<"forward_metrics">>, DecodedMap, false)
+               end,
+
+  Configured = application:get_env(telemetry, forward_metrics, false),
+
+  Configured and not Overridden.
 
 
 receive_metrics() ->
