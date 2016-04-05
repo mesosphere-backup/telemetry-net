@@ -69,7 +69,7 @@ forward_metrics() ->
   Overridden = case OverridePath of
                  false ->
                    false;
-                 Path ->
+                 Path when is_list(Path) ->
                    {ok, FD} = file:open(Path, [binary, raw, read]),
                    {ok, JSON} = file:read(FD, 32768),
                    DecodedList = jsx:decode(JSON),
