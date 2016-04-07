@@ -34,8 +34,7 @@ stop() ->
 default_tags() ->
   {ok, HN} = inet:gethostname(),
   M = maps:new(),
-  maps:put(hostname, HN, M),
-  M.
+  maps:put(hostname, HN, M).
 
 -spec(counter(Name :: string(), Value :: float()) -> ok).
 counter(Name, Value) ->
@@ -58,7 +57,6 @@ counter(Name, Tags, Value) ->
               AggregateTags :: list(list(string() | atom())),
               Value :: float()) -> ok).
 counter(Name, Tags, AggregateTags, Value) ->
-  AggregateTags2 = add_empty_list_if_not_present(AggregateTags),
   Now = os:system_time(seconds),
   MergedDefaultTags = maps:merge(default_tags(), Tags),
   lists:map(fun(AggTagList) ->
@@ -70,7 +68,7 @@ counter(Name, Tags, AggregateTags, Value) ->
                               MergedTags = maps:merge(MergedDefaultTags, AggTagMap),                                                                                                                             telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, counter, Value)
                           end, AggTagList)
-            end, [[], AggregateTags2]).
+            end, [[], AggregateTags]).
 
 
 -spec(histogram(Name :: string(), Value :: float()) -> ok).
@@ -94,7 +92,6 @@ histogram(Name, Tags, Value) ->
                 AggregateTags :: list(list(string() | atom())),
                 Value :: float()) -> ok).
 histogram(Name, Tags, AggregateTags, Value) ->
-  AggregateTags2 = add_empty_list_if_not_present(AggregateTags),
   Now = os:system_time(seconds),
   MergedDefaultTags = maps:merge(default_tags(), Tags),
   lists:map(fun(AggTagList) ->
@@ -107,7 +104,7 @@ histogram(Name, Tags, AggregateTags, Value) ->
                               telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, histogram, Value)
                           end, AggTagList)
-            end, [[], AggregateTags2]).
+            end, [[], AggregateTags]).
 
 
 -spec(add_gauge_func(Name :: string() | atom(),
@@ -149,12 +146,3 @@ invert_time_name_to_value_orddict(TimeNameToValueOrddict, ExtractFun) ->
                   TimeSummaryMap = maps:from_list(TimeSummary),
                   maps:put(Name, TimeSummaryMap, AccIn)
               end, #{}, DictList).
-
-
-add_empty_list_if_not_present(L) ->
-  case lists:member([], L) of
-    true ->
-      L;
-    false ->
-      [[] | L]
-  end.
