@@ -36,6 +36,7 @@
   metrics = #metrics{},
   metric_funs = maps:new()
   }).
+-type state() :: #store{}.
 
 
 %%%===================================================================
@@ -146,13 +147,13 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
-  State :: #store{}) ->
-  {reply, Reply :: #metrics{}, NewState :: #store{}} |
-  {reply, Reply :: #metrics{}, NewState :: #store{}, timeout() | hibernate} |
+  State :: state()) ->
+  {reply, Reply :: #metrics{}, NewState :: state()} |
+  {reply, Reply :: #metrics{}, NewState :: state(), timeout() | hibernate} |
   {noreply, NewState :: #store{}} |
   {noreply, NewState :: #store{}, timeout() | hibernate} |
-  {stop, Reason :: term(), Reply :: term(), NewState :: #store{}} |
-  {stop, Reason :: term(), NewState :: #store{}}).
+  {stop, Reason :: term(), Reply :: term(), NewState :: state()} |
+  {stop, Reason :: term(), NewState :: state()}).
 handle_call(reap, _From, #store{metrics = Metrics, metric_funs = MetricFuns}) ->
   %% record function gauges
   Metrics2 = record_gauge_funcs(Metrics, MetricFuns),
@@ -200,7 +201,7 @@ handle_call({remove_gauge_func, Name}, _From, State = #store{metric_funs = Metri
   {reply, ok, NewState};
 
 handle_call(Request, _From, State) ->
-  lager:warn("got unknown request in telemetry_store handle_call: ~p", [Request]),
+  lager:warning("got unknown request in telemetry_store handle_call: ~p", [Request]),
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
@@ -210,10 +211,10 @@ handle_call(Request, _From, State) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(handle_cast(Request :: term(), State :: #store{}) ->
-  {noreply, NewState :: #store{}} |
-  {noreply, NewState :: #store{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #store{}}).
+-spec(handle_cast(Request :: term(), State :: state()) ->
+  {noreply, NewState :: state()} |
+  {noreply, NewState :: state(), timeout() | hibernate} |
+  {stop, Reason :: term(), NewState :: state()}).
 handle_cast({submit, Name, Time, histogram, Value},
             State = #store{metrics = Metrics}) ->
   #metrics{time_to_histos = TimeToHistos,
@@ -317,7 +318,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
-  State :: #metrics{}) -> term()).
+  State :: state()) -> term()).
 terminate(_Reason, _State = #store{}) ->
   ok.
 
@@ -329,9 +330,9 @@ terminate(_Reason, _State = #store{}) ->
 %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%--------------------------------------------------------------------
--spec(code_change(OldVsn :: term() | {down, term()}, State :: #metrics{},
+-spec(code_change(OldVsn :: term() | {down, term()}, State :: state(),
   Extra :: term()) ->
-  {ok, NewState :: #metrics{}} | {error, Reason :: term()}).
+  {ok, NewState :: state()} | {error, Reason :: term()}).
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 

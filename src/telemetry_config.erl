@@ -76,7 +76,7 @@ forward_metrics() ->
           DecodedList = jsx:decode(JSON),
           DecodedMap = maps:from_list(DecodedList),
           maps:get(<<"forward_metrics">>, DecodedMap, Configured);
-        else ->
+        _Else ->
           Configured
       end
   end.

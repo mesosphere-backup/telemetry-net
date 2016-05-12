@@ -43,6 +43,7 @@ counter(Name, Value) ->
   telemetry_store:submit(#name_tags{name = Name, tags = DefaultTags},
                          Now, counter, Value).
 
+%% @doc This is called by an external program to add `Value` to a counter
 -spec(counter(Name :: string(),
               Tags :: maps:map(string() | atom(), string() | atom()),
               Value :: float()) -> ok).
@@ -50,8 +51,10 @@ counter(Name, Tags, Value) ->
   Now = os:system_time(seconds),
   MergedTags = maps:merge(default_tags(), Tags),
   telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
-                         Now, counter, Value).
+                         Now, counter, Value),
+  ok.
 
+%% @doc This is called by an external program to add `Value` to a counter
 -spec(counter(Name :: string(),
               Tags :: maps:map(string() | atom(), string() | atom()),
               AggregateTags :: list(list(string() | atom())),
@@ -68,7 +71,8 @@ counter(Name, Tags, AggregateTags, Value) ->
                               MergedTags = maps:merge(MergedDefaultTags, AggTagMap),                                                                                                                             telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, counter, Value)
                           end, AggTagList)
-            end, [[], AggregateTags]).
+            end, [[], AggregateTags]),
+  ok.
 
 
 -spec(histogram(Name :: string(), Value :: float()) -> ok).
@@ -87,6 +91,7 @@ histogram(Name, Tags, Value) ->
   telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                          Now, histogram, Value).
 
+%% @doc This is called by an external program to add `Value` to the histogram specificed by `Name`.
 -spec(histogram(Name :: string(),
                 Tags :: maps:map(string() | atom(), string() | atom()),
                 AggregateTags :: list(list(string() | atom())),
@@ -104,7 +109,8 @@ histogram(Name, Tags, AggregateTags, Value) ->
                               telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, histogram, Value)
                           end, AggTagList)
-            end, [[], AggregateTags]).
+            end, [[], AggregateTags]),
+  ok.
 
 
 -spec(add_gauge_func(Name :: string() | atom(),
