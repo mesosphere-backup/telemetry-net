@@ -71,11 +71,14 @@ forward_metrics() ->
     false ->
       Configured;
     Path when is_list(Path) ->
-      {ok, FD} = file:open(Path, [binary, raw, read]),
-      {ok, JSON} = file:read(FD, 32768),
-      DecodedList = jsx:decode(JSON),
-      DecodedMap = maps:from_list(DecodedList),
-      maps:get(<<"forward_metrics">>, DecodedMap, Configured)
+      case file:read_file(Path) of
+        {ok, JSON} ->
+          DecodedList = jsx:decode(JSON),
+          DecodedMap = maps:from_list(DecodedList),
+          maps:get(<<"forward_metrics">>, DecodedMap, Configured);
+        else ->
+          Configured
+      end
   end.
 
 
