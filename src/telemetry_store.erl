@@ -154,37 +154,9 @@ init([]) ->
   {noreply, NewState :: #store{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: state()} |
   {stop, Reason :: term(), NewState :: state()}).
-handle_call(reap, _From, #store{metrics = Metrics, metric_funs = MetricFuns}) ->
-  %% record function gauges
-  Metrics2 = record_gauge_funcs(Metrics, MetricFuns),
-
-  #metrics{time_to_histos = TimeToHistos,
-           time_to_counters = TimeToCounters} = Metrics2,
-
-  %% Create a snapshot of current metrics.
-  ReapedState = export_metrics(Metrics2),
-
-  %% Prune metrics that we should shed.
-  Now = os:system_time(seconds),
-
-  CutoffTime = Now - (telemetry_config:interval_seconds() *
-                      telemetry_config:max_intervals()),
-
-  TimeGate = fun ({Time, _Name}, _V) ->
-                 Time >= CutoffTime
-             end,
-  TimeToHistos2 = orddict:filter(TimeGate, TimeToHistos),
-  TimeToCounters2 = orddict:filter(TimeGate, TimeToCounters),
-
-  %% Only nodes in aggregator mode should retain non-partial metrics.
-  IsAggregator = telemetry_config:is_aggregator(),
-  RetMetrics = case IsAggregator of
-                 true -> #metrics{time_to_histos = TimeToHistos2,
-                                  time_to_counters = TimeToCounters2};
-                 false -> #metrics{}
-               end,
-  RetState = #store{metrics = RetMetrics, metric_funs = MetricFuns},
-  {reply, ReapedState, RetState};
+handle_call(reap, _From, State) ->
+  {Reply, NewState} = handle_reap(State),
+  {reply, Reply, NewState};
 
 handle_call(snapshot, _From, State = #store{metrics = Metrics}) ->
   ReapedState = export_metrics(Metrics),
@@ -215,79 +187,16 @@ handle_call(Request, _From, State) ->
   {noreply, NewState :: state()} |
   {noreply, NewState :: state(), timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: state()}).
-handle_cast({submit, Name, Time, histogram, Value},
-            State = #store{metrics = Metrics}) ->
-  #metrics{time_to_histos = TimeToHistos,
-           dirty_histos = DirtyHistos} = Metrics,
-  NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
-  TimeToHistos2 = case orddict:is_key({NormalizedTime, Name}, TimeToHistos) of
-                    true ->
-                      TimeToHistos;
-                    false ->
-                      Histo = telemetry_histo:new(),
-                      orddict:store({NormalizedTime, Name}, Histo, TimeToHistos)
-                  end,
+handle_cast({submit, Name, Time, histogram, Value}, State) ->
+  NewState = handle_submit_histogram(Name, Time, Value, State),
+  {noreply, NewState};
+handle_cast({merge, Metrics}, State) ->
+  NewState = handle_merge(Metrics, State),
+  {noreply, NewState};
+handle_cast({submit, Name, Time, counter, Value}, State) ->
+  NewState = handle_submit_counter(Name, Time, Value, State),
+  {noreply, NewState}.
 
-  TimeToHistos3 = orddict:update({NormalizedTime, Name},
-                                 fun (Histo) ->
-                                     telemetry_histo:record(Histo, Value)
-                                 end, TimeToHistos2),
-
-  DirtyHistos2 = sets:add_element({NormalizedTime, Name}, DirtyHistos),
-
-  RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos3,
-                               dirty_histos = DirtyHistos2},
-
-  RetState = State#store{metrics = RetMetrics},
-
-  {noreply, RetState};
-
-handle_cast({merge, #metrics{time_to_histos = TimeToHistosIn,
-                             time_to_counters = TimeToCountersIn,
-                             dirty_histos = DirtyHistosIn,
-                             dirty_counters = DirtyCountersIn}},
-            _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
-  #metrics{time_to_histos = TimeToHistos,
-           time_to_counters = TimeToCounters,
-           dirty_histos = DirtyHistos,
-           dirty_counters = DirtyCounters} = Metrics,
-  MergedDirtyHistos = sets:union(DirtyHistosIn, DirtyHistos),
-  MergedDirtyCounters = sets:union(DirtyCountersIn, DirtyCounters),
-  MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
-  MergedHistos = merge_histos(TimeToHistosIn, TimeToHistos),
-  MergedMetrics = #metrics{time_to_histos = MergedHistos,
-                           time_to_counters = MergedCounters,
-                           dirty_histos = MergedDirtyHistos,
-                           dirty_counters = MergedDirtyCounters},
-  MergedState = #store{metrics = MergedMetrics, metric_funs = MetricFuns},
-
-  case telemetry_config:opentsdb_endpoint() of
-    false -> ok;
-    _ ->
-      submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
-                                               dirty_counters = DirtyCountersIn})
-  end,
-
-  {noreply, MergedState};
-
-
-handle_cast({submit, Name, Time, counter, Value},
-            State = #store{metrics = Metrics}) ->
-  #metrics{time_to_counters = TimeToCounters,
-           dirty_counters = DirtyCounters} = Metrics,
-
-  NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
-
-  TimeToCounters2 = orddict:update_counter({NormalizedTime, Name}, Value, TimeToCounters),
-
-  DirtyCounters2 = sets:add_element({NormalizedTime, Name}, DirtyCounters),
-
-  RetMetrics = Metrics#metrics{time_to_counters = TimeToCounters2,
-                               dirty_counters = DirtyCounters2},
-
-  RetState = State#store{metrics = RetMetrics},
-
-  {noreply, RetState}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -431,3 +340,112 @@ submit_histos_to_opentsdb(Summary) ->
                                     end, AccIn, TimeValue)
                       end, [], Summary),
   gen_opentsdb:put_metric_batch(Metrics).
+
+-spec(handle_reap(State :: state()) -> {Reply :: #metrics{}, NewState :: state()}).
+handle_reap(State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
+    %% record function gauges
+    Metrics2 = record_gauge_funcs(Metrics, MetricFuns),
+
+    #metrics{time_to_histos = TimeToHistos,
+        time_to_counters = TimeToCounters} = Metrics2,
+
+    %% Create a snapshot of current metrics.
+    ReapedState = export_metrics(Metrics2),
+
+    %% Prune metrics that we should shed.
+    Now = os:system_time(seconds),
+
+    CutoffTime = Now - (telemetry_config:interval_seconds() *
+        telemetry_config:max_intervals()),
+
+    TimeGate = fun ({Time, _Name}, _V) ->
+        Time >= CutoffTime
+               end,
+    TimeToHistos2 = orddict:filter(TimeGate, TimeToHistos),
+    TimeToCounters2 = orddict:filter(TimeGate, TimeToCounters),
+
+    %% Only nodes in aggregator mode should retain non-partial metrics.
+    IsAggregator = telemetry_config:is_aggregator(),
+    RetMetrics = case IsAggregator of
+                     true -> #metrics{time_to_histos = TimeToHistos2,
+                         time_to_counters = TimeToCounters2};
+                     false -> #metrics{}
+                 end,
+    RetState = State#store{metrics = RetMetrics, metric_funs = MetricFuns},
+    {ReapedState, RetState}.
+
+
+-spec(handle_submit_histogram(Name :: term(), Time :: term(), Value :: term(), State :: state()) ->
+    NewState :: state()).
+handle_submit_histogram(Name, Time, Value, State = #store{metrics = Metrics}) ->
+    #metrics{time_to_histos = TimeToHistos,
+        dirty_histos = DirtyHistos} = Metrics,
+    NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
+    TimeToHistos2 = case orddict:is_key({NormalizedTime, Name}, TimeToHistos) of
+                        true ->
+                            TimeToHistos;
+                        false ->
+                            Histo = telemetry_histo:new(),
+                            orddict:store({NormalizedTime, Name}, Histo, TimeToHistos)
+                    end,
+
+    TimeToHistos3 = orddict:update({NormalizedTime, Name},
+        fun(Histo) ->
+            telemetry_histo:record(Histo, Value)
+        end, TimeToHistos2),
+
+    DirtyHistos2 = sets:add_element({NormalizedTime, Name}, DirtyHistos),
+
+    RetMetrics = Metrics#metrics{time_to_histos = TimeToHistos3,
+        dirty_histos = DirtyHistos2},
+
+    State#store{metrics = RetMetrics}.
+
+-spec(handle_submit_counter(Name :: term(), Time :: term(), Value :: term(), State :: state()) ->
+    NewState :: state()).
+handle_submit_counter(Name, Time, Value, State = #store{metrics = Metrics}) ->
+    #metrics{time_to_counters = TimeToCounters,
+        dirty_counters = DirtyCounters} = Metrics,
+
+    NormalizedTime = Time - (round(Time) rem telemetry_config:interval_seconds()),
+
+    TimeToCounters2 = orddict:update_counter({NormalizedTime, Name}, Value, TimeToCounters),
+
+    DirtyCounters2 = sets:add_element({NormalizedTime, Name}, DirtyCounters),
+
+    RetMetrics = Metrics#metrics{time_to_counters = TimeToCounters2,
+        dirty_counters = DirtyCounters2},
+
+    State#store{metrics = RetMetrics}.
+
+
+-spec(handle_merge(Metrics :: #metrics{}, State :: state()) -> NewState :: state()).
+handle_merge(#metrics{time_to_histos = TimeToHistosIn,
+    time_to_counters = TimeToCountersIn,
+    dirty_histos = DirtyHistosIn,
+    dirty_counters = DirtyCountersIn},
+    _State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
+
+    #metrics{time_to_histos = TimeToHistos,
+        time_to_counters = TimeToCounters,
+        dirty_histos = DirtyHistos,
+        dirty_counters = DirtyCounters} = Metrics,
+    MergedDirtyHistos = sets:union(DirtyHistosIn, DirtyHistos),
+    MergedDirtyCounters = sets:union(DirtyCountersIn, DirtyCounters),
+    MergedCounters = merge_counters(TimeToCountersIn, TimeToCounters),
+    MergedHistos = merge_histos(TimeToHistosIn, TimeToHistos),
+    MergedMetrics = #metrics{time_to_histos = MergedHistos,
+        time_to_counters = MergedCounters,
+        dirty_histos = MergedDirtyHistos,
+        dirty_counters = MergedDirtyCounters},
+    maybe_push_to_opentsdb(MergedMetrics, DirtyHistosIn, DirtyCountersIn),
+    #store{metrics = MergedMetrics, metric_funs = MetricFuns}.
+
+maybe_push_to_opentsdb(MergedMetrics, DirtyHistosIn, DirtyCountersIn) ->
+    case telemetry_config:opentsdb_endpoint() of
+        false -> ok;
+        _ ->
+            submit_to_opentsdb(MergedMetrics#metrics{dirty_histos = DirtyHistosIn,
+                dirty_counters = DirtyCountersIn}),
+            ok
+    end.

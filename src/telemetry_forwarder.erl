@@ -186,7 +186,7 @@ splay_ms() ->
 -spec(fmt_ip({integer(), integer(), integer(), integer()}) -> atom()).
 fmt_ip({A, B, C, D}) ->
   NodeList = io_lib:format("networkagg@~p.~p.~p.~p",
-                           [A,B,C,D]),
+                           [A, B, C, D]),
   FlatStr = lists:flatten(NodeList),
   list_to_atom(FlatStr).
 
@@ -219,7 +219,6 @@ name_to_ips(Name) ->
     {error, Error} ->
       lager:warning("Could not resolve name ~s: ~p", [Name, Error]),
       []
-  end.      
-  
+  end.
 
 
