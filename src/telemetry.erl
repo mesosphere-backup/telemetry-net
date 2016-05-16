@@ -46,7 +46,7 @@ counter(Name, Value) ->
 %% @doc This is called by an external program to add `Value` to a counter
 -spec(counter(Name :: string(),
               Tags :: maps:map(string() | atom(), string() | atom()),
-              Value :: float()) -> ok).
+              Value :: integer()) -> ok).
 counter(Name, Tags, Value) ->
   Now = os:system_time(seconds),
   MergedTags = maps:merge(default_tags(), Tags),
