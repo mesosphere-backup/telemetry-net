@@ -12,6 +12,7 @@
 -type histo_summary() :: maps:map(string(), maps:map(integer(), maps:map(atom(), term()))).
 -type counter_summary() :: maps:map(string(), maps:map(integer(), integer())).
 
+-type metric_name() :: atom() | binary() | string().
 
 -record(name_tags, {
   name :: string(),

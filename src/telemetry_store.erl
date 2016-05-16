@@ -48,7 +48,7 @@
 %% Submit a metric to the store for aggregation.
 %% @end
 %%--------------------------------------------------------------------
--spec(submit(Name :: binary(), Time :: integer(), Type :: term(), Value :: term()) -> ok | {error, atom()}).
+-spec(submit(Name :: metric_name(), Time :: integer(), Type :: term(), Value :: term()) -> ok | {error, atom()}).
 submit(Name, Time, Type, Value) ->
   gen_server:cast(?SERVER, {submit, Name, Time, Type, Value}).
 

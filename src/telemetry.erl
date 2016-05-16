@@ -36,7 +36,7 @@ default_tags() ->
   M = maps:new(),
   maps:put(hostname, HN, M).
 
--spec(counter(Name :: string(), Value :: integer()) -> ok).
+-spec(counter(Name :: metric_name(), Value :: integer()) -> ok).
 counter(Name, Value) ->
   Now = os:system_time(seconds),
   DefaultTags = default_tags(),
@@ -44,7 +44,7 @@ counter(Name, Value) ->
                          Now, counter, Value).
 
 %% @doc This is called by an external program to add `Value` to a counter
--spec(counter(Name :: string(),
+-spec(counter(Name :: metric_name(),
               Tags :: maps:map(string() | atom(), string() | atom()),
               Value :: integer()) -> ok).
 counter(Name, Tags, Value) ->
@@ -55,7 +55,7 @@ counter(Name, Tags, Value) ->
   ok.
 
 %% @doc This is called by an external program to add `Value` to a counter
--spec(counter(Name :: string(),
+-spec(counter(Name :: metric_name(),
               Tags :: maps:map(string() | atom(), string() | atom()),
               AggregateTags :: list(list(string() | atom())),
               Value :: integer()) -> ok).
@@ -75,14 +75,14 @@ counter(Name, Tags, AggregateTags, Value) ->
   ok.
 
 
--spec(histogram(Name :: string(), Value :: float()) -> ok).
+-spec(histogram(Name :: metric_name(), Value :: float()) -> ok).
 histogram(Name, Value) ->
   Now = os:system_time(seconds),
   DefaultTags = default_tags(),
   telemetry_store:submit(#name_tags{name = Name, tags = DefaultTags},
                          Now, histogram, Value).
 
--spec(histogram(Name :: string(),
+-spec(histogram(Name :: metric_name(),
                 Tags :: maps:map(string() | atom(), string() | atom()),
                 Value :: float()) -> ok).
 histogram(Name, Tags, Value) ->
@@ -92,7 +92,7 @@ histogram(Name, Tags, Value) ->
                          Now, histogram, Value).
 
 %% @doc This is called by an external program to add `Value` to the histogram specificed by `Name`.
--spec(histogram(Name :: string(),
+-spec(histogram(Name :: metric_name(),
                 Tags :: maps:map(string() | atom(), string() | atom()),
                 AggregateTags :: list(list(string() | atom())),
                 Value :: float()) -> ok).
