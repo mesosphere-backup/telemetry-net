@@ -28,19 +28,16 @@ percentile(#histo{total = 0}, _Pct) ->
   {error, empty_histo};
 percentile(#histo{total = T, values = V}, Pct) when Pct >= 0 andalso Pct =< 1.0 ->
   Threshold = T * Pct,
-  PctFun = fun(CompK, Count, AccIn) ->
-               case AccIn of
-                 {notfound, SoFar} ->
-                   NewSoFar = Count + SoFar,
-                   case NewSoFar >= Threshold of
-                     true ->
-                       decompress(CompK);
-                     false ->
-                       {notfound, NewSoFar}
-                   end;
-                 _ ->
-                   AccIn
-               end
+  PctFun = fun(CompK, Count, _AccIn = {notfound, SoFar}) ->
+                NewSoFar = Count + SoFar,
+                case NewSoFar >= Threshold of
+                  true ->
+                    decompress(CompK);
+                  false ->
+                    {notfound, NewSoFar}
+                end;
+              (_CompK, _Count, AccIn)   ->
+                AccIn
            end,
   orddict:fold(PctFun, {notfound, 0}, V).
 

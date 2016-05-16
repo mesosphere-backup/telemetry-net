@@ -71,9 +71,7 @@ unix_timestamp() ->
 execute(#otsdb{host=false}, _Action) ->
   {error, no_opentsdb_endpoint_configured};
 
-execute(#otsdb{host=Host, port=Port}, Action) ->
-  case Action of
-    {put, Metric, Amount, Tags} ->
+execute(#otsdb{host=Host, port=Port}, _Action = {put, Metric, Amount, Tags}) ->
       case convert_amount(Amount) of
         {ok, SafeAmount} ->
           Time = list_to_binary(integer_to_list(unix_timestamp())),
@@ -81,7 +79,7 @@ execute(#otsdb{host=Host, port=Port}, Action) ->
           send(Host, Port, Msg);
         _ -> {error, invalid_amount}
       end;
-    {put_batch, Metrics} ->
+execute(#otsdb{host=Host, port=Port}, _Action = {put_batch, Metrics}) ->
       Msg = lists:map(fun ({Name, Time, Amount, Tags}) ->
                           case convert_amount(Amount) of
                             {ok, SafeAmount} ->
@@ -91,9 +89,7 @@ execute(#otsdb{host=Host, port=Port}, Action) ->
                               []
                           end
                       end, Metrics),
-      send(Host, Port, Msg);
-    _ -> {error, invalid_action}
-  end.
+      send(Host, Port, Msg).
 
 send(Host, Port, Msg) ->
   {ok, Sock} = gen_tcp:connect(Host, Port, ?TCP_DEFAULT),
