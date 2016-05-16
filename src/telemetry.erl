@@ -75,7 +75,7 @@ counter(Name, Tags, AggregateTags, Value) ->
   ok.
 
 
--spec(histogram(Name :: metric_name(), Value :: float()) -> ok).
+-spec(histogram(Name :: metric_name(), Value :: number()) -> ok).
 histogram(Name, Value) ->
   Now = os:system_time(seconds),
   DefaultTags = default_tags(),
@@ -84,7 +84,7 @@ histogram(Name, Value) ->
 
 -spec(histogram(Name :: metric_name(),
                 Tags :: maps:map(string() | atom(), string() | atom()),
-                Value :: float()) -> ok).
+                Value :: number()) -> ok).
 histogram(Name, Tags, Value) ->
   Now = os:system_time(seconds),
   MergedTags = maps:merge(default_tags(), Tags),
@@ -95,7 +95,7 @@ histogram(Name, Tags, Value) ->
 -spec(histogram(Name :: metric_name(),
                 Tags :: maps:map(string() | atom(), string() | atom()),
                 AggregateTags :: list(list(string() | atom())),
-                Value :: float()) -> ok).
+                Value :: number()) -> ok).
 histogram(Name, Tags, AggregateTags, Value) ->
   Now = os:system_time(seconds),
   MergedDefaultTags = maps:merge(default_tags(), Tags),
