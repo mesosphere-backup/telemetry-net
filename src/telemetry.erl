@@ -36,7 +36,7 @@ default_tags() ->
   M = maps:new(),
   maps:put(hostname, HN, M).
 
--spec(counter(Name :: string(), Value :: float()) -> ok).
+-spec(counter(Name :: string(), Value :: integer()) -> ok).
 counter(Name, Value) ->
   Now = os:system_time(seconds),
   DefaultTags = default_tags(),
@@ -58,7 +58,7 @@ counter(Name, Tags, Value) ->
 -spec(counter(Name :: string(),
               Tags :: maps:map(string() | atom(), string() | atom()),
               AggregateTags :: list(list(string() | atom())),
-              Value :: float()) -> ok).
+              Value :: integer()) -> ok).
 counter(Name, Tags, AggregateTags, Value) ->
   Now = os:system_time(seconds),
   MergedDefaultTags = maps:merge(default_tags(), Tags),
