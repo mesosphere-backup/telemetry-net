@@ -250,5 +250,5 @@ name_to_ips(Name) ->
 -ifdef(TEST).
 prefix_test() ->
   Prefixed = 'abc@1.2.3.4',
-  ?assertEqual(Prefixed, prefix_ip("abc@", {1,2,3,4})).
+  ?assertEqual(Prefixed, prefix_ip("abc@", {1, 2, 3, 4})).
 -endif.
