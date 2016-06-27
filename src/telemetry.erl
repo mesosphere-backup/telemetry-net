@@ -43,7 +43,7 @@ counter(Name, Value) ->
   telemetry_store:submit(#name_tags{name = Name, tags = DefaultTags},
                          Now, counter, Value).
 
-%% @doc This is called by an external program to add `Value` to a counter
+%% @doc This is called by an external program to add Value to a counter
 -spec(counter(Name :: metric_name(),
               Tags :: maps:map(string() | atom(), string() | atom()),
               Value :: integer()) -> ok).
@@ -54,7 +54,7 @@ counter(Name, Tags, Value) ->
                          Now, counter, Value),
   ok.
 
-%% @doc This is called by an external program to add `Value` to a counter
+%% @doc This is called by an external program to add Value to a counter
 -spec(counter(Name :: metric_name(),
               Tags :: maps:map(string() | atom(), string() | atom()),
               AggregateTags :: list(list(string() | atom())),
@@ -91,7 +91,7 @@ histogram(Name, Tags, Value) ->
   telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                          Now, histogram, Value).
 
-%% @doc This is called by an external program to add `Value` to the histogram specificed by `Name`.
+%% @doc This is called by an external program to add Value to the histogram specificed by Name.
 -spec(histogram(Name :: metric_name(),
                 Tags :: maps:map(string() | atom(), string() | atom()),
                 AggregateTags :: list(list(string() | atom())),
