@@ -21,6 +21,9 @@
   terminate/2,
   code_change/3]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(SERVER, ?MODULE).
 
@@ -115,17 +118,18 @@ handle_info(attempt_push, State) ->
   Endpoints = telemetry_config:forwarder_destinations(),
 
   Destinations = get_destinations(Endpoints),
-  DestinationAtoms = lists:map(fun fmt_ip/1, Destinations),
+
+  DestinationAtomsV2 = lists:map(fun fmt_ip_v2/1, Destinations),
+  DestinationAtomsV1 = lists:map(fun fmt_ip_v1/1, Destinations),
 
   %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
   %% new ones at each interval.
-  {_GoodReps, BadReps} = gen_server:multi_call(DestinationAtoms,
-                                               telemetry_receiver,
-                                               {push_metrics, Metrics}),
-
-  case BadReps of
-    [] -> ok;
-    _ -> lager:warning("failed to submit metrics to ~p", [BadReps])
+  %% Try to submit to the new endpoint first, then fall back to older one.
+  case try_submit(Metrics, [DestinationAtomsV2, DestinationAtomsV1]) of
+    {error, no_successful_responses} ->
+      DestinationAtoms = DestinationAtomsV1 ++ DestinationAtomsV2,
+      lager:warning("failed to submit metrics to any of ~p", [DestinationAtoms]);
+    ok -> ok
   end,
 
   erlang:send_after(splay_ms(), self(), attempt_push),
@@ -133,6 +137,19 @@ handle_info(attempt_push, State) ->
   {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
+
+try_submit(_Metrics, []) ->
+  {error, no_successful_responses};
+try_submit(Metrics, [DestinationGroup | OtherDestinationGroups]) ->
+  {GoodReps, _BadReps} = gen_server:multi_call(DestinationGroup,
+                                               telemetry_receiver,
+                                               {push_metrics, Metrics}),
+  case GoodReps of
+    [] ->
+      try_submit(Metrics, OtherDestinationGroups);
+    _ ->
+      ok
+  end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -179,15 +196,23 @@ splay_ms() ->
 
   SplayMS = telemetry_config:splay_seconds() * 1000,
   FlooredSplayMS = max(1, SplayMS),
-  Splay = random:uniform(FlooredSplayMS),
+  Splay = rand:uniform(FlooredSplayMS),
 
   NextMinute + Splay.
 
--spec(fmt_ip({integer(), integer(), integer(), integer()}) -> atom()).
-fmt_ip({A, B, C, D}) ->
-  NodeList = io_lib:format("networkagg@~p.~p.~p.~p",
-                           [A, B, C, D]),
-  FlatStr = lists:flatten(NodeList),
+-spec(fmt_ip_v1({integer(), integer(), integer(), integer()}) -> atom()).
+fmt_ip_v1({A, B, C, D}) ->
+  prefix_ip("networkagg@", {A, B, C, D}).
+
+-spec(fmt_ip_v2({integer(), integer(), integer(), integer()}) -> atom()).
+fmt_ip_v2({A, B, C, D}) ->
+  prefix_ip("networking_api@", {A, B, C, D}).
+
+-spec(prefix_ip(atom(), {integer(), integer(), integer(), integer()}) -> atom()).
+prefix_ip(Prefix, {A, B, C, D}) ->
+  NodeList = io_lib:format("~p.~p.~p.~p", [A, B, C, D]),
+  PrefixedStr = Prefix ++ NodeList,
+  FlatStr = lists:flatten(PrefixedStr),
   list_to_atom(FlatStr).
 
 
@@ -222,3 +247,8 @@ name_to_ips(Name) ->
   end.
 
 
+-ifdef(TEST).
+prefix_test() ->
+  Prefixed = 'abc@1.2.3.4',
+  ?assertEqual(Prefixed, prefix_ip("abc@", {1,2,3,4})).
+-endif.
