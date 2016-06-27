@@ -208,7 +208,7 @@ fmt_ip_v1({A, B, C, D}) ->
 fmt_ip_v2({A, B, C, D}) ->
   prefix_ip("networking_api@", {A, B, C, D}).
 
--spec(prefix_ip(atom(), {integer(), integer(), integer(), integer()}) -> atom()).
+-spec(prefix_ip(string(), {integer(), integer(), integer(), integer()}) -> atom()).
 prefix_ip(Prefix, {A, B, C, D}) ->
   NodeList = io_lib:format("~p.~p.~p.~p", [A, B, C, D]),
   PrefixedStr = Prefix ++ NodeList,
