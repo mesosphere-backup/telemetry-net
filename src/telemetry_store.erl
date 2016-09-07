@@ -17,7 +17,7 @@
   reap/0,
   merge/1,
   add_gauge_func/2,
-  remove_gauge_func/1
+  remove_gauge_func/1,
   add_prepare_func/2
   ]).
 
@@ -35,7 +35,7 @@
 
 -record(store, {
   metrics = #metrics{},
-  metric_funs = maps:new()
+  metric_funs = maps:new(),
   prepare_funs = maps:new()
   }).
 -type state() :: #store{}.
@@ -301,7 +301,7 @@ record_gauge_funcs(Metrics = #metrics{time_to_counters = TimeToCounters,
                   dirty_counters = DirtyCounters2}.
 
 run_prepare_funs(Metrics, PrepareFuns) ->
-  maps:fold(fun (Name, Fun, Acc) -> Fun(Acc) end, Metrics, PrepareFuns)
+  maps:fold(fun (_Name, Fun, Acc) -> Fun(Acc) end, Metrics, PrepareFuns).
 
 
 -spec(export_metrics(#metrics{}) -> #metrics{}).

@@ -20,7 +20,7 @@
          histogram/4,
          add_gauge_func/2,
          remove_gauge_func/1,
-         add_prepare_func/1,
+         add_prepare_func/2,
          metrics_to_summary/1
         ]).
 
@@ -114,7 +114,7 @@ histogram(Name, Tags, AggregateTags, Value) ->
   ok.
 
 -spec(add_prepare_func(Name :: string() | atom(),
-                       Fun :: fun(term())->term()) -> ok).
+                       Fun :: fun((#metrics{}) -> #metrics{})) -> ok).
 add_prepare_func(Name, Fun) ->
   telemetry_store:add_prepare_func(Name, Fun).
 
