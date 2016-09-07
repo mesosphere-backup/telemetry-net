@@ -18,6 +18,7 @@
   merge/1,
   add_gauge_func/2,
   remove_gauge_func/1
+  add_prepare_func/2
   ]).
 
 %% gen_server callbacks
@@ -35,6 +36,7 @@
 -record(store, {
   metrics = #metrics{},
   metric_funs = maps:new()
+  prepare_funs = maps:new()
   }).
 -type state() :: #store{}.
 
@@ -108,6 +110,16 @@ remove_gauge_func(Name) ->
 
 %%--------------------------------------------------------------------
 %% @doc
+%% Register a fun to map the metrics prior to the creation of the
+%% snapshot.
+%% @end
+%%--------------------------------------------------------------------
+-spec(add_prepare_func(string(), fun()) -> ok | {error, atom()}).
+add_prepare_func(Name, Fun) ->
+  gen_server:call(?SERVER, {add_prepare_func, Name, Fun}).
+
+%%--------------------------------------------------------------------
+%% @doc
 %% Starts the server
 %%
 %% @end
@@ -170,6 +182,11 @@ handle_call({add_gauge_func, Name, Fun}, _From, State = #store{metric_funs = Met
 handle_call({remove_gauge_func, Name}, _From, State = #store{metric_funs = MetricFuns}) ->
   NewMetricFuns = maps:remove(Name, MetricFuns),
   NewState = State#store{metric_funs = NewMetricFuns},
+  {reply, ok, NewState};
+
+handle_call({add_prepare_func, Name, Fun}, _From, State = #store{prepare_funs = PrepareFuns}) ->
+  NewPrepareFuns = maps:put(Name, Fun, PrepareFuns),
+  NewState = State#store{prepare_funs = NewPrepareFuns},
   {reply, ok, NewState};
 
 handle_call(Request, _From, State) ->
@@ -283,6 +300,9 @@ record_gauge_funcs(Metrics = #metrics{time_to_counters = TimeToCounters,
   Metrics#metrics{time_to_counters = RetCounters2,
                   dirty_counters = DirtyCounters2}.
 
+run_prepare_funs(Metrics, PrepareFuns) ->
+  maps:fold(fun (Name, Fun, Acc) -> Fun(Acc) end, Metrics, PrepareFuns)
+
 
 -spec(export_metrics(#metrics{}) -> #metrics{}).
 export_metrics(#metrics{time_to_histos = TimeToHistos,
@@ -342,15 +362,18 @@ submit_histos_to_opentsdb(Summary) ->
   gen_opentsdb:put_metric_batch(Metrics).
 
 -spec(handle_reap(State :: state()) -> {Reply :: #metrics{}, NewState :: state()}).
-handle_reap(State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
+handle_reap(State = #store{metrics = Metrics, metric_funs = MetricFuns, prepare_funs = PrepareFuns}) ->
     %% record function gauges
     Metrics2 = record_gauge_funcs(Metrics, MetricFuns),
 
     #metrics{time_to_histos = TimeToHistos,
         time_to_counters = TimeToCounters} = Metrics2,
 
+    % prepare the metrics before creating the snapshot
+    Metrics3 = run_prepare_funs(Metrics2, PrepareFuns),
+
     %% Create a snapshot of current metrics.
-    ReapedState = export_metrics(Metrics2),
+    ReapedState = export_metrics(Metrics3),
 
     %% Prune metrics that we should shed.
     Now = os:system_time(seconds),
