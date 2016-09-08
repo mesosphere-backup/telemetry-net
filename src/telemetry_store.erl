@@ -259,6 +259,8 @@ terminate(_Reason, _State = #store{}) ->
 -spec(code_change(OldVsn :: term() | {down, term()}, State :: state(),
   Extra :: term()) ->
   {ok, NewState :: state()} | {error, Reason :: term()}).
+code_change("0.0.1", {store, Metrics, Funs}, _Extra) ->
+  {ok, {store, Metrics, Funs, maps:new()}};
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
