@@ -26,6 +26,12 @@
 
 -include("telemetry.hrl").
 
+-ifdef(TEST).
+-include_lib("proper/include/proper.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+
 start() ->
   application:ensure_all_started(telemetry).
 
@@ -157,3 +163,10 @@ invert_time_name_to_value_orddict(TimeNameToValueOrddict, ExtractFun) ->
                   TimeSummaryMap = maps:from_list(TimeSummary),
                   maps:put(Name, TimeSummaryMap, AccIn)
               end, #{}, DictList).
+
+-ifdef(TEST).
+prepare_test_() -> {setup,
+                    fun() -> start(), ok end,
+                    fun(_) -> stop() end,
+                    ?_assertEqual(ok, add_prepare_func(foobar, fun(M) -> M end))}.
+-endif.
