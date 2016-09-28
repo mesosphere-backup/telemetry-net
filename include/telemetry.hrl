@@ -15,7 +15,7 @@
 -type metric_name() :: atom() | binary() | string().
 
 -record(name_tags, {
-  name :: string(),
+  name :: metric_name(),
   tags :: maps:map()
   }).
 
