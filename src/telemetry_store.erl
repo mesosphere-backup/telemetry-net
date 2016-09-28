@@ -74,7 +74,7 @@ snapshot() ->
 %% collect the counters and histogram exports.
 %% @end
 %%--------------------------------------------------------------------
--spec(reap() -> {ok, term()} | {error, atom()}).
+-spec(reap() -> #metrics{}).
 reap() ->
   gen_server:call(?SERVER, reap).
 
