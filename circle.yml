@@ -32,6 +32,11 @@ test:
     - ./elvis rock
     - ./rebar3 edoc
   post:
+    - git clone https://github.com/idubrov/covertool
+    - cd covertool && ../rebar3 compile
+    - cd covertool && ../rebar3 escriptize
+    - sudo pip install codecov
+    - find . -name "*.coverdata" | while read FF; do covertool/_build/default/bin/covertool -cover "$FF" -appname urilib -output cobertura.xml; codecov; done
     - mkdir -p $CIRCLE_TEST_REPORTS/
     - mkdir -p $CIRCLE_ARTIFACTS
     - cp -r _build/test $CIRCLE_TEST_REPORTS
