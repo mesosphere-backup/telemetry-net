@@ -31,6 +31,7 @@ test:
     - ./rebar3 dialyzer
     - ./elvis rock
     - ./rebar3 edoc
+    - ./rebar3 ct
   post:
     - git clone https://github.com/idubrov/covertool
     - cd covertool && ../rebar3 compile
