@@ -2,7 +2,7 @@ machine:
   pre:
     - echo "127.0.0.1 $(uname -n|cut -f1 -d.) $(uname -n) localhost" | sudo tee /etc/hosts
   environment:
-    PATH: ${HOME}/extras/bin:${HOME}/extras/otp/18.3/bin:${PATH}
+    PATH: ${HOME}/extras/bin:${HOME}/extras/otp/19.0/bin:${PATH}
 dependencies:
   cache_directories:
     - ~/extras
@@ -31,7 +31,14 @@ test:
     - ./rebar3 dialyzer
     - ./elvis rock
     - ./rebar3 edoc
+    - ./rebar3 ct
   post:
+    - git clone https://github.com/idubrov/covertool
+    - cd covertool && ../rebar3 compile
+    - cd covertool && ../rebar3 escriptize
+    - sudo pip install codecov
+    - covertool/_build/default/bin/covertool -cover _build/test/cover/eunit.coverdata -appname urilib -output eunit.cobertura.xml; codecov -X gcov -f eunit.cobertura.xml;
+    - covertool/_build/default/bin/covertool -cover _build/test/cover/ct.coverdata -appname urilib -output ct.cobertura.xml; codecov -X gcov -f ct.cobertura.xml;
     - mkdir -p $CIRCLE_TEST_REPORTS/
     - mkdir -p $CIRCLE_ARTIFACTS
     - cp -r _build/test $CIRCLE_TEST_REPORTS
