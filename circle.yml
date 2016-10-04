@@ -37,7 +37,8 @@ test:
     - cd covertool && ../rebar3 compile
     - cd covertool && ../rebar3 escriptize
     - sudo pip install codecov
-    - find . -name "*.coverdata" | while read FF; do covertool/_build/default/bin/covertool -cover "$FF" -appname urilib -output cobertura.xml; codecov; done
+    - covertool/_build/default/bin/covertool -cover _build/test/cover/eunit.coverdata -appname urilib -output eunit.cobertura.xml; codecov -X gcov -f eunit.cobertura.xml;
+    - covertool/_build/default/bin/covertool -cover _build/test/cover/ct.coverdata -appname urilib -output ct.cobertura.xml; codecov -X gcov -f ct.cobertura.xml;
     - mkdir -p $CIRCLE_TEST_REPORTS/
     - mkdir -p $CIRCLE_ARTIFACTS
     - cp -r _build/test $CIRCLE_TEST_REPORTS
