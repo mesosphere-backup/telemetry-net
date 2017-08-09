@@ -14,11 +14,11 @@
   max_intervals/0,
   splay_seconds/0,
   forwarder_destinations/0,
+  forwarder_destinations/1,
   forward_to_all_resolved_hosts/0,
   is_aggregator/0,
   enable_metric_database/0,
   forward_metrics/0,
-  receive_metrics/0,
   opentsdb_endpoint/0,
   rendered_metric_receiver_modules/0
   ]).
@@ -39,6 +39,8 @@ splay_seconds() ->
 forwarder_destinations() ->
   application:get_env(telemetry, forwarder_destinations, []).
 
+forwarder_destinations(Servers) ->
+  application:set_env(telemetry, forwarder_destinations, Servers).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -62,29 +64,8 @@ forward_to_all_resolved_hosts() ->
 is_aggregator() ->
   application:get_env(telemetry, is_aggregator, false).
 
-
 forward_metrics() ->
-  OverridePath = application:get_env(telemetry, override_path, false),
-  Configured = application:get_env(telemetry, forward_metrics, false),
-
-  case OverridePath of
-    false ->
-      Configured;
-    Path when is_list(Path) ->
-      case file:read_file(Path) of
-        {ok, JSON} ->
-          DecodedList = jsx:decode(JSON),
-          DecodedMap = maps:from_list(DecodedList),
-          maps:get(<<"forward_metrics">>, DecodedMap, Configured);
-        _Else ->
-          Configured
-      end
-  end.
-
-
-receive_metrics() ->
-  application:get_env(telemetry, receive_metrics, false).
-
+  application:get_env(telemetry, forward_metrics, false).
 
 enable_metric_database() ->
   application:get_env(telemetry, enable_metric_database, false).

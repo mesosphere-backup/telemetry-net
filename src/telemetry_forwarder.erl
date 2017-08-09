@@ -113,41 +113,19 @@ handle_cast(_Req, State) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_info(attempt_push, State) ->
-  Metrics = telemetry_store:reap(),
-
-  Endpoints = telemetry_config:forwarder_destinations(),
-
-  Destinations = get_destinations(Endpoints),
-
-  DestinationAtomsV2 = lists:map(fun fmt_ip_v2/1, Destinations),
-  DestinationAtomsV1 = lists:map(fun fmt_ip_v1/1, Destinations),
-
-  %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
-  %% new ones at each interval.
-  %% Try to submit to the new endpoint first, then fall back to older one.
-  case try_submit(Metrics, [DestinationAtomsV2, DestinationAtomsV1]) of
-    {error, no_successful_responses} ->
-      DestinationAtoms = DestinationAtomsV1 ++ DestinationAtomsV2,
-      lager:warning("failed to submit metrics to any of ~p", [DestinationAtoms]);
-    ok -> ok
-  end,
-
+  push(telemetry_config:forward_metrics()),
   erlang:send_after(splay_ms(), self(), attempt_push),
-
   {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
 
-try_submit(_Metrics, []) ->
-  {error, no_successful_responses};
-try_submit(Metrics, [DestinationGroup | OtherDestinationGroups]) ->
-  {GoodReps, _BadReps} = gen_server:multi_call(DestinationGroup,
-                                               telemetry_receiver,
-                                               {push_metrics, Metrics}),
-  case GoodReps of
-    [] ->
-      try_submit(Metrics, OtherDestinationGroups);
-    _ ->
+try_submit(Metrics, Servers) ->
+  Process = telemetry_receiver,
+  Message = {push_metrics, Metrics},
+  case  gen_server:multi_call(Servers, Process, Message) of
+    {[], _BadReps} ->
+      {error, no_successful_responses};
+    {_GoodReps, _BadReps} ->
       ok
   end.
 
@@ -181,6 +159,23 @@ terminate(_Reason, _State = #state{}) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
+
+push(false) ->
+  ok;
+push(true) ->
+  Metrics = telemetry_store:reap(),
+
+  Destinations = telemetry_config:forwarder_destinations(),
+
+  %% TODO(tyler) persist submissions for failed pushes, and retry them before sending
+  %% new ones at each interval.
+  %% Try to submit to the new endpoint first, then fall back to older one.
+  case try_submit(Metrics, Destinations) of
+    {error, no_successful_responses} ->
+      lager:warning("failed to submit metrics to any of ~p", [Destinations]);
+    ok -> ok
+  end.
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -199,56 +194,3 @@ splay_ms() ->
   Splay = rand:uniform(FlooredSplayMS),
 
   NextMinute + Splay.
-
--spec(fmt_ip_v1({integer(), integer(), integer(), integer()}) -> atom()).
-fmt_ip_v1({A, B, C, D}) ->
-  prefix_ip("networkagg@", {A, B, C, D}).
-
--spec(fmt_ip_v2({integer(), integer(), integer(), integer()}) -> atom()).
-fmt_ip_v2({A, B, C, D}) ->
-  prefix_ip("networking_api@", {A, B, C, D}).
-
--spec(prefix_ip(string(), {integer(), integer(), integer(), integer()}) -> atom()).
-prefix_ip(Prefix, {A, B, C, D}) ->
-  NodeList = io_lib:format("~p.~p.~p.~p", [A, B, C, D]),
-  PrefixedStr = Prefix ++ NodeList,
-  FlatStr = lists:flatten(PrefixedStr),
-  list_to_atom(FlatStr).
-
-
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% If the first argument is true, return the full second argument.
-%% Otherwise, return at most one element from the second argument.
-%% @end
-%%--------------------------------------------------------------------
--spec(take_first_or_all(boolean(), list(term())) -> list(term())).
-take_first_or_all(true, R) ->
-  R;
-take_first_or_all(false, []) ->
-  [];
-take_first_or_all(false, [A | _]) ->
-  [A].
-
--spec(get_destinations([string()]) -> [inet:ipv4_address()]).
-get_destinations(Endpoints) ->
-  lists:flatmap(fun name_to_ips/1, Endpoints).
-
-name_to_ips(Name) ->
-  UseAllEndpointsPerRecord = telemetry_config:forward_to_all_resolved_hosts(),
-  case inet:getaddrs(Name, inet) of
-    {ok, Records} ->
-      take_first_or_all(UseAllEndpointsPerRecord, Records);
-    {error, Error} ->
-      lager:warning("Could not resolve name ~s: ~p", [Name, Error]),
-      []
-  end.
-
-
--ifdef(TEST).
-prefix_test() ->
-  Prefixed = 'abc@1.2.3.4',
-  ?assertEqual(Prefixed, prefix_ip("abc@", {1, 2, 3, 4})).
--endif.
