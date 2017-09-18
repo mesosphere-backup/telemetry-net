@@ -1,0 +1,62 @@
+version: 2
+jobs:
+  build:
+    working_directory: ~/telemetry-net
+    docker:
+      - image: erlang:20.0
+    steps:
+      - checkout
+      - restore_cache:
+          key: rebar3
+      - run:
+          name: Updating rebar3
+          command: ./rebar3 update
+      - restore_cache:
+          key: rebar3-deps-{{ checksum "rebar.lock" }}
+      - run:
+          name: Fetching dependencies
+          command: ./rebar3 get-deps
+      - save_cache:
+          key: rebar3-deps-{{ checksum "rebar.lock" }}
+          paths:
+            - _build/default/lib
+      - run:
+          name: Building
+          command: ./rebar3 compile
+      - run:
+          name: Checking eunit tests
+          command: ./rebar3 eunit -v
+      - run:
+          name: Checking common tests
+          command: ./rebar3 ct -v
+      - run:
+          name: Running cross reference analysis
+          command: ./rebar3 xref
+      - run:
+          name: Running static analyzer
+          command: ./rebar3 dialyzer
+      - run:
+          name: Checking code style
+          command: ./rebar3 as lint lint
+      - run:
+          name: Performing coverage analysis
+          command: ./rebar3 as test cover
+      - run:
+          name: Generating cover report
+          command: ./rebar3 covertool generate
+      - save_cache:
+          key: rebar3
+          paths:
+            - ~/.cache/rebar3
+      - run:
+          name: Installing python
+          command: |
+              apt-get update
+              apt-get install -y --no-install-recommends python3-pip
+      - run:
+          name: Installing codecov
+          command: pip3 install codecov
+      - run:
+          name: Sending cover report
+          command: |
+              codecov -X gcov -f _build/test/covertool/telemetry.covertool.xml
