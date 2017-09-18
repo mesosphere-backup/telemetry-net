@@ -1,28 +1,10 @@
-[{<<"eflame">>,
-  {git,"https://github.com/slfritchie/eflame.git",
-       {ref,"a08518142126f5fc541a3a3c4a04c27f24448bae"}},
-  0},
- {<<"eper">>,
-  {git,"https://github.com/massemanet/eper.git",
-       {ref,"1742031e12fb9e6eac0ffacfc593d5a7849fc07f"}},
-  0},
- {<<"goldrush">>,
-  {git,"git://github.com/DeadZen/goldrush.git",
-       {ref,"212299233c7e7eb63a97be2777e1c05ebaa58dbe"}},
-  1},
- {<<"jsx">>,
-  {git,"https://github.com/talentdeficit/jsx.git",
-       {ref,"3074d4865b3385a050badf7828ad31490d860df5"}},
-  0},
- {<<"lager">>,
-  {git,"git://github.com/basho/lager",
-       {ref,"8187757388c9adc915379caaab36a2f2ca26e944"}},
-  0},
- {<<"meck">>,
-  {git,"git://github.com/eproxus/meck",
-       {ref,"17b0ea5b7d9c93af3a52b5152c6bee14302b3885"}},
-  0},
- {<<"sync">>,
-  {git,"git://github.com/rustyio/sync.git",
-       {ref,"11df81d196eaab2d84caa3fbe8def5d476ef79d8"}},
-  0}].
+{"1.1.0",
+[{<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"2.8.2">>},0},
+ {<<"lager">>,{pkg,<<"lager">>,<<"3.5.1">>},0}]}.
+[
+{pkg_hash,[
+ {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
+ {<<"jsx">>, <<"7ACC7D785B5ABE8A6E9ADBDE926A24E481F29956DD8B4DF49E3E4E7BCC92A018">>},
+ {<<"lager">>, <<"63897A61AF646C59BB928FEE9756CE8BDD02D5A1A2F3551D4A5E38386C2CC071">>}]}
+].

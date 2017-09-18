@@ -1,10 +1,4 @@
-PACKAGE         ?= networking_api
-VERSION         ?= $(shell git describe --tags)
-BASE_DIR         = $(shell pwd)
-ERLANG_BIN       = $(shell dirname $(shell which erl))
-REBAR            = $(shell pwd)/rebar3
-
-.PHONY: rel deps test eqc
+.PHONY: test
 
 all: compile
 
@@ -13,14 +7,10 @@ all: compile
 ##
 
 compile:
-	$(REBAR) compile
+	./rebar3 compile
 
-clean: packageclean
-	$(REBAR) clean
-
-packageclean:
-	rm -fr *.deb
-	rm -fr *.tar.gz
+clean:
+	./rebar3 clean
 
 ##
 ## Test targets
@@ -30,25 +20,14 @@ check: test xref dialyzer
 
 test: ct eunit
 
-eqc:
-	./rebar3 as test eqc
-
 eunit:
-	./rebar3 as test eunit
+	./rebar3 eunit -v
 
 ct:
-	./rebar3 as test ct
+	./rebar3 ct -v
 
-##
-## Release targets
-##
+dialyzer:
+	./rebar3 dialyzer
 
-rel:
-		./rebar3 release
-
-stage:
-		./rebar3 release -d
-
-DIALYZER_APPS = kernel stdlib erts sasl eunit syntax_tools compiler crypto
-
-include tools.mk
+xref:
+	./rebar3 xref
