@@ -57,7 +57,7 @@ submit(Name, Time, Type, Value) ->
 %% Get a snapshot of current metrics.
 %% @end
 %%--------------------------------------------------------------------
--spec(snapshot() -> #metrics{}).
+-spec(snapshot() -> metrics()).
 snapshot() ->
   case ets:lookup(snapcache, last_snap) of
     [{last_snap, Cached}] ->
@@ -74,7 +74,7 @@ snapshot() ->
 %% collect the counters and histogram exports.
 %% @end
 %%--------------------------------------------------------------------
--spec(reap() -> #metrics{}).
+-spec(reap() -> metrics()).
 reap() ->
   gen_server:call(?SERVER, reap).
 
@@ -83,7 +83,7 @@ reap() ->
 %% Take counters and histograms and merge them with our state.
 %% @end
 %%--------------------------------------------------------------------
--spec(merge(Metrics :: #metrics{}) -> ok | {error, atom()}).
+-spec(merge(Metrics :: metrics()) -> ok | {error, atom()}).
 merge(Metrics) ->
   gen_server:cast(?SERVER, {merge, Metrics}).
 
@@ -121,39 +121,10 @@ start_link() ->
 %%% gen_server callbacks
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Initializes the server
-%%
-%% @spec init(Args) -> {ok, State} |
-%%                     {ok, State, Timeout} |
-%%                     ignore |
-%%                     {stop, Reason}
-%% @end
-%%--------------------------------------------------------------------
--spec(init(term()) ->
-  {ok, State :: #store{}} | {ok, State :: #store{}, timeout() | hibernate} |
-  {stop, Reason :: term()} | ignore).
 init([]) ->
   snapcache = ets:new(snapcache, [named_table, set, {read_concurrency, true}]),
   {ok, #store{}}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling call messages
-%%
-%% @end
-%%--------------------------------------------------------------------
--spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
-  State :: state()) ->
-  {reply, Reply :: #metrics{}, NewState :: state()} |
-  {reply, Reply :: #metrics{}, NewState :: state(), timeout() | hibernate} |
-  {noreply, NewState :: #store{}} |
-  {noreply, NewState :: #store{}, timeout() | hibernate} |
-  {stop, Reason :: term(), Reply :: term(), NewState :: state()} |
-  {stop, Reason :: term(), NewState :: state()}).
 handle_call(reap, _From, State) ->
   {Reply, NewState} = handle_reap(State),
   {reply, Reply, NewState};
@@ -176,17 +147,6 @@ handle_call(Request, _From, State) ->
   lager:warning("got unknown request in telemetry_store handle_call: ~p", [Request]),
   {reply, ok, State}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling cast messages
-%%
-%% @end
-%%--------------------------------------------------------------------
--spec(handle_cast(Request :: term(), State :: state()) ->
-  {noreply, NewState :: state()} |
-  {noreply, NewState :: state(), timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: state()}).
 handle_cast({submit, Name, Time, histogram, Value}, State) ->
   NewState = handle_submit_histogram(Name, Time, Value, State),
   {noreply, NewState};
@@ -198,50 +158,12 @@ handle_cast({submit, Name, Time, counter, Value}, State) ->
   {noreply, NewState}.
 
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling all non call/cast messages
-%%
-%% @spec handle_info(Info, State) -> {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
--spec(handle_info(Info :: timeout() | term(), State :: #metrics{}) ->
-  {noreply, NewState :: #metrics{}} |
-  {noreply, NewState :: #metrics{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #metrics{}}).
 handle_info(_Info, State) ->
   {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any
-%% necessary cleaning up. When it returns, the gen_server terminates
-%% with Reason. The return value is ignored.
-%%
-%% @spec terminate(Reason, State) -> void()
-%% @end
-%%--------------------------------------------------------------------
--spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
-  State :: state()) -> term()).
 terminate(_Reason, _State = #store{}) ->
   ok.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Convert process state when code is changed
-%%
-%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% @end
-%%--------------------------------------------------------------------
--spec(code_change(OldVsn :: term() | {down, term()}, State :: state(),
-  Extra :: term()) ->
-  {ok, NewState :: state()} | {error, Reason :: term()}).
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
@@ -284,7 +206,7 @@ record_gauge_funcs(Metrics = #metrics{time_to_counters = TimeToCounters,
                   dirty_counters = DirtyCounters2}.
 
 
--spec(export_metrics(#metrics{}) -> #metrics{}).
+-spec(export_metrics(metrics()) -> metrics()).
 export_metrics(#metrics{time_to_histos = TimeToHistos,
                         time_to_counters = TimeToCounters,
                         dirty_histos = DirtyHistos,
@@ -341,7 +263,7 @@ submit_histos_to_opentsdb(Summary) ->
                       end, [], Summary),
   gen_opentsdb:put_metric_batch(Metrics).
 
--spec(handle_reap(State :: state()) -> {Reply :: #metrics{}, NewState :: state()}).
+-spec(handle_reap(State :: state()) -> {Reply :: metrics(), NewState :: state()}).
 handle_reap(State = #store{metrics = Metrics, metric_funs = MetricFuns}) ->
     %% record function gauges
     Metrics2 = record_gauge_funcs(Metrics, MetricFuns),
@@ -419,7 +341,7 @@ handle_submit_counter(Name, Time, Value, State = #store{metrics = Metrics}) ->
     State#store{metrics = RetMetrics}.
 
 
--spec(handle_merge(Metrics :: #metrics{}, State :: state()) -> NewState :: state()).
+-spec(handle_merge(Metrics :: metrics(), State :: state()) -> NewState :: state()).
 handle_merge(#metrics{time_to_histos = TimeToHistosIn,
     time_to_counters = TimeToCountersIn,
     dirty_histos = DirtyHistosIn,
