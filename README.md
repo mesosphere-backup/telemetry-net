@@ -1,9 +1,15 @@
+[![CircleCI][circleci badge]][circleci]
+[![Coverage][coverage badge]][covercov]
+[![Jira][jira badge]][jira]
+[![License][license badge]][license]
+[![Erlang Versions][erlang version badge]][erlang]
+
 # Telemetry-net
-[![Circle CI](https://circleci.com/gh/dcos/telemetry-net.svg?style=svg&circle-token=940320d718fd6d3a67f7f27172ec5b561d0df7ce)](https://circleci.com/gh/dcos/telemetry-net)
 
 Telemetry-net is a library for aggregation of metrics across many systems.  It supports counters and histograms.  You can also register a function to be called periodically to populate a value.  You can also specify aggregation tags on the client to specify that certain axes of tags on metrics should be collapsed.
 
 ## Configuration
+
 ```
   {telemetry,
     [
@@ -23,6 +29,7 @@ Telemetry-net is a library for aggregation of metrics across many systems.  It s
   }
 ```
 ## Usage
+
 ```
 Tags = #{host => "host-324242", destination => "10.1.2.3:5"},
 % Aggregate pass-through (include all tags), collapse on hostname to get
@@ -33,3 +40,17 @@ AggTags = [[], [hostname], [hostname, destination]],
 telemetry:counter(connect_successes, Tags, AggTags, 1),
 telemetry:histogram(connect_latency, Tags, AggTags, TimeDelta),
 ```
+
+<!-- Badges -->
+[circleci badge]: https://img.shields.io/circleci/project/github/dcos/telemetry-net/master.svg?style=flat-square
+[coverage badge]: https://img.shields.io/codecov/c/github/dcos/telemetry-net/master.svg?style=flat-square
+[jira badge]: https://img.shields.io/badge/issues-jira-yellow.svg?style=flat-square
+[license badge]: https://img.shields.io/github/license/dcos/telemetry-net.svg?style=flat-square
+[erlang version badge]: https://img.shields.io/badge/erlang-20.0-blue.svg?style=flat-square
+
+<!-- Links -->
+[circleci]: https://circleci.com/gh/dcos/telemetry-net
+[covercov]: https://codecov.io/gh/dcos/telemetry-net
+[jira]: https://jira.dcos.io/issues/?jql=component+%3D+networking+AND+project+%3D+DCOS_OSS
+[license]: ./LICENSE
+[erlang]: http://erlang.org/
