@@ -26,3 +26,5 @@
   dirty_histos = sets:new(),
   dirty_counters = sets:new()
   }).
+
+-type metrics() :: #metrics{}.

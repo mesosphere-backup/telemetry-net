@@ -68,7 +68,8 @@ counter(Name, Tags, AggregateTags, Value) ->
                                                   {Tag, aggregate}
                                               end, AggTags),
                               AggTagMap = maps:from_list(AT2),
-                              MergedTags = maps:merge(MergedDefaultTags, AggTagMap),                                                                                                                             telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
+                              MergedTags = maps:merge(MergedDefaultTags, AggTagMap),
+                              telemetry_store:submit(#name_tags{name = Name, tags = MergedTags},
                                                      Now, counter, Value)
                           end, AggTagList)
             end, [[], AggregateTags]),
@@ -123,7 +124,7 @@ remove_gauge_func(Name) ->
   telemetry_store:remove_gauge_func(Name).
 
 %% Converts orddicts that are {Time, Metric} -> Value to Metric -> Time -> Value
--spec(metrics_to_summary(#metrics{}) -> maps:map(atom(), histo_summary() | counter_summary())).
+-spec(metrics_to_summary(metrics()) -> maps:map(atom(), histo_summary() | counter_summary())).
 metrics_to_summary(#metrics{time_to_histos = TimeToHistos,
                             time_to_counters = TimeToCounters}) ->
   HistoExtractFun = fun telemetry_histo:map_summary/1,
