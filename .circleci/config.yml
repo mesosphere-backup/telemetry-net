@@ -3,7 +3,7 @@ jobs:
   build:
     working_directory: ~/telemetry-net
     docker:
-      - image: erlang:20.0
+      - image: erlang:20.1
     steps:
       - checkout
       - restore_cache:

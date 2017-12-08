@@ -46,7 +46,7 @@ telemetry:histogram(connect_latency, Tags, AggTags, TimeDelta),
 [coverage badge]: https://img.shields.io/codecov/c/github/dcos/telemetry-net/master.svg?style=flat-square
 [jira badge]: https://img.shields.io/badge/issues-jira-yellow.svg?style=flat-square
 [license badge]: https://img.shields.io/github/license/dcos/telemetry-net.svg?style=flat-square
-[erlang version badge]: https://img.shields.io/badge/erlang-20.0-blue.svg?style=flat-square
+[erlang version badge]: https://img.shields.io/badge/erlang-20.1-blue.svg?style=flat-square
 
 <!-- Links -->
 [circleci]: https://circleci.com/gh/dcos/telemetry-net
