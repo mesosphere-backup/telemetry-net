@@ -109,7 +109,7 @@ push(true) ->
 -spec(splay_ms() -> integer()).
 splay_ms() ->
   MsPerMinute = telemetry_config:interval_seconds() * 1000,
-  NextMinute = -1 * erlang:monotonic_time(milli_seconds) rem MsPerMinute,
+  NextMinute = MsPerMinute - erlang:system_time(millisecond) rem MsPerMinute,
 
   SplayMS = telemetry_config:splay_seconds() * 1000,
   FlooredSplayMS = max(1, SplayMS),
