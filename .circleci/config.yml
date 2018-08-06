@@ -43,7 +43,7 @@ jobs:
           command: ./rebar3 as test cover
       - run:
           name: Generating cover report
-          command: ./rebar3 covertool generate
+          command: ./rebar3 as test covertool generate
       - save_cache:
           key: rebar3
           paths:
