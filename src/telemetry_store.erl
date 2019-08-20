@@ -28,6 +28,7 @@
   terminate/2,
   code_change/3]).
 
+-include_lib("kernel/include/logger.hrl").
 -include("telemetry.hrl").
 
 -define(SERVER, ?MODULE).
@@ -61,10 +62,10 @@ submit(Name, Time, Type, Value) ->
 snapshot() ->
   case ets:lookup(snapcache, last_snap) of
     [{last_snap, Cached}] ->
-      lager:debug("returning cached snapshot"),
+      ?LOG_DEBUG("returning cached snapshot"),
       Cached;
     _ ->
-      lager:debug("returning generated snapshot"),
+      ?LOG_DEBUG("returning generated snapshot"),
       gen_server:call(?SERVER, snapshot)
   end.
 
@@ -144,7 +145,7 @@ handle_call({remove_gauge_func, Name}, _From, State = #store{metric_funs = Metri
   {reply, ok, NewState};
 
 handle_call(Request, _From, State) ->
-  lager:warning("got unknown request in telemetry_store handle_call: ~p", [Request]),
+  ?LOG_WARNING("got unknown request in telemetry_store handle_call: ~p", [Request]),
   {reply, ok, State}.
 
 handle_cast({submit, Name, Time, histogram, Value}, State) ->
@@ -216,7 +217,7 @@ export_metrics(#metrics{time_to_histos = TimeToHistos,
                              time_to_counters = TimeToCounters,
                              dirty_histos = DirtyHistos,
                              dirty_counters = DirtyCounters},
-  lager:debug("populating the snapcache with metrics"),
+  ?LOG_DEBUG("populating the snapcache with metrics"),
   true = ets:insert(snapcache, {last_snap, ExportedMetrics}),
   ExportedMetrics.
 

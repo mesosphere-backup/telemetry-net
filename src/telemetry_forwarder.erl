@@ -21,6 +21,8 @@
   terminate/2,
   code_change/3]).
 
+-include_lib("kernel/include/logger.hrl").
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -94,7 +96,7 @@ push(true) ->
   %% Try to submit to the new endpoint first, then fall back to older one.
   case try_submit(Metrics, Destinations) of
     {error, no_successful_responses} ->
-      lager:warning("failed to submit metrics to any of ~p", [Destinations]);
+      ?LOG_WARNING("failed to submit metrics to any of ~p", [Destinations]);
     ok -> ok
   end.
 
